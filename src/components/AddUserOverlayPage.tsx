@@ -10,6 +10,7 @@ import {
   AlertCircle 
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { CustomDropdown } from './CustomDropdown';
 
 interface AddUserOverlayPageProps {
   onClose: () => void;
@@ -174,21 +175,19 @@ export function AddUserOverlayPage({ onClose }: AddUserOverlayPageProps) {
               </div>
 
               {/* Input: Initial Onboarding Status */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 min-w-0">
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
                   Initial Status
                 </label>
-                <div className="relative">
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as any)}
-                    className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all appearance-none cursor-pointer"
-                  >
-                    <option value="active">Active Onboarded</option>
-                    <option value="inactive">Pending Invite</option>
-                  </select>
-                  <UserCheck className="w-4 h-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
+                <CustomDropdown
+                  value={status}
+                  onChange={(v) => setStatus(v as 'active' | 'inactive')}
+                  icon={UserCheck}
+                  options={[
+                    { value: 'active', label: 'Active Onboarded' },
+                    { value: 'inactive', label: 'Pending Invite' },
+                  ]}
+                />
               </div>
 
               {/* Input: Assign Venues */}

@@ -4,13 +4,13 @@ import {
   Cpu, 
   Building2, 
   MapPin, 
-  Activity, 
   Wind, 
   CheckCircle2, 
   ArrowRight,
   AlertCircle 
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { CustomDropdown } from './CustomDropdown';
 
 const AC_BRANDS = ['Gree', 'Daikin', 'Mitsubishi', 'Haier', 'Carrier', 'TCL', 'Kenwood', 'Orient'];
 
@@ -174,92 +174,68 @@ export function AddDeviceOverlayPage({ onClose }: AddDeviceOverlayPageProps) {
               </div>
 
               {/* Input: Organization Dropdown */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 min-w-0">
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
                   Select Organization <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
-                  <select
-                    value={orgId}
-                    onChange={(e) => setOrgId(e.target.value)}
-                    className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all appearance-none cursor-pointer"
-                  >
-                    {orgs.map((org) => (
-                      <option key={org.id} value={org.id}>
-                        {org.name}
-                      </option>
-                    ))}
-                  </select>
-                  <Building2 className="w-4 h-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
+                <CustomDropdown
+                  value={orgId}
+                  onChange={setOrgId}
+                  icon={Building2}
+                  options={orgs.map((org) => ({ value: org.id, label: org.name }))}
+                />
               </div>
 
               {/* Input: Venue Dropdown */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 min-w-0">
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
                   Select Venue <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
-                  <select
-                    value={venueId}
-                    onChange={(e) => setVenueId(e.target.value)}
-                    className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all appearance-none cursor-pointer"
-                  >
-                    {filteredVenues.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name}
-                      </option>
-                    ))}
-                    {filteredVenues.length === 0 && (
-                      <option value="">No venues available</option>
-                    )}
-                  </select>
-                  <MapPin className="w-4 h-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
+                <CustomDropdown
+                  value={venueId}
+                  onChange={setVenueId}
+                  icon={MapPin}
+                  placeholder="No venues available"
+                  options={
+                    filteredVenues.length > 0
+                      ? filteredVenues.map((v) => ({ value: v.id, label: v.name }))
+                      : [{ value: '', label: 'No venues available', disabled: true }]
+                  }
+                />
               </div>
 
               {/* Grid: Brand and Capacity */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 min-w-0">
                 {/* Input: Brand Dropdown */}
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
                     AC Brand
                   </label>
-                  <div className="relative">
-                    <select
-                      value={brand}
-                      onChange={(e) => setBrand(e.target.value)}
-                      className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all appearance-none cursor-pointer"
-                    >
-                      {AC_BRANDS.map((b) => (
-                        <option key={b} value={b}>
-                          {b}
-                        </option>
-                      ))}
-                    </select>
-                    <Wind className="w-4 h-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
+                  <CustomDropdown
+                    value={brand}
+                    onChange={setBrand}
+                    icon={Wind}
+                    options={AC_BRANDS.map((b) => ({ value: b, label: b }))}
+                  />
                 </div>
 
                 {/* Input: Capacity Dropdown */}
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 min-w-0">
                   <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
                     AC Capacity
                   </label>
-                  <div className="relative">
-                    <select
-                      value={capacity}
-                      onChange={(e) => setCapacity(e.target.value)}
-                      className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all appearance-none cursor-pointer"
-                    >
-                      <option value="1ton">1.0 Ton</option>
-                      <option value="1.5ton">1.5 Ton</option>
-                      <option value="2ton">2.0 Ton</option>
-                      <option value="2.5ton">2.5 Ton</option>
-                      <option value="3.5ton">3.5 Ton</option>
-                    </select>
-                    <Wind className="w-4 h-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
+                  <CustomDropdown
+                    value={capacity}
+                    onChange={setCapacity}
+                    icon={Wind}
+                    options={[
+                      { value: '1ton', label: '1.0 Ton' },
+                      { value: '1.5ton', label: '1.5 Ton' },
+                      { value: '2ton', label: '2.0 Ton' },
+                      { value: '2.5ton', label: '2.5 Ton' },
+                      { value: '3.5ton', label: '3.5 Ton' },
+                    ]}
+                  />
                 </div>
               </div>
 

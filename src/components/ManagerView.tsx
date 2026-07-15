@@ -7,12 +7,13 @@ import { ACBrandManagement } from './ACBrandManagement';
 import { 
   Users, User, Building2, MapPin, MonitorSmartphone, Plus, Edit, Trash2, 
   Activity, ChevronDown, ChevronUp, Check, Lock, Unlock, 
-  AlertTriangle, CheckCircle2, Download, Filter, Clock, History, Zap
+  AlertTriangle, CheckCircle2, Download, Filter, Clock, History, Zap, Search
 } from 'lucide-react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area
 } from 'recharts';
 import { Modal } from './Modal';
+import { CustomDropdown } from './CustomDropdown';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const AC_BRANDS = [
@@ -114,6 +115,8 @@ export function ManagerView({
   const [expandedDeviceId, setExpandedDeviceId] = useState<string | null>(null);
   const [selectedDeviceVenueId, setSelectedDeviceVenueId] = useState<string>('all');
   const [selectedVenueOrgId, setSelectedVenueOrgId] = useState<string>('all');
+  const [venueSearchQuery, setVenueSearchQuery] = useState('');
+  const [deviceSearchQuery, setDeviceSearchQuery] = useState('');
   const [venueTempInputs, setVenueTempInputs] = useState<Record<string, string>>({});
   const [tempSuccess, setTempSuccess] = useState<Record<string, boolean>>({});
   const [deviceTempInputs, setDeviceTempInputs] = useState<Record<string, string>>({});
@@ -394,6 +397,23 @@ export function ManagerView({
       prev.includes(vId) ? prev.filter((id) => id !== vId) : [...prev, vId]
     );
   };
+
+  const normalizedVenueSearch = venueSearchQuery.trim().toLowerCase();
+  const normalizedDeviceSearch = deviceSearchQuery.trim().toLowerCase();
+
+  const filteredManagedVenues = venues.filter((venue) => {
+    const matchesOrg = selectedVenueOrgId === 'all' || venue.orgId === selectedVenueOrgId;
+    const matchesSearch =
+      !normalizedVenueSearch || venue.name.toLowerCase().includes(normalizedVenueSearch);
+    return matchesOrg && matchesSearch;
+  });
+
+  const filteredManagedDevices = units.filter((unit) => {
+    const matchesVenue = selectedDeviceVenueId === 'all' || unit.venueId === selectedDeviceVenueId;
+    const matchesSearch =
+      !normalizedDeviceSearch || unit.name.toLowerCase().includes(normalizedDeviceSearch);
+    return matchesVenue && matchesSearch;
+  });
 
   return (
     <div className={`w-full ${
@@ -977,20 +997,31 @@ export function ManagerView({
               </h3>
             </div>
 
-            {/* Filter */}
-            <div className="relative w-full sm:w-64 shrink-0">
-              <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-blue-500/80" />
-              <select 
-                value={selectedVenueOrgId}
-                onChange={(e) => setSelectedVenueOrgId(e.target.value)}
-                className="w-full pl-11 pr-10 py-2.5 bg-white border border-blue-500 rounded-full text-xs sm:text-sm font-black text-slate-800 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all appearance-none cursor-pointer shadow-sm"
-              >
-                <option value="all">All Organizations</option>
-                {orgs.map(o => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-blue-500/80 pointer-events-none" />
+            {/* Search + Filter side by side */}
+            <div className="flex items-center gap-2 w-full min-w-0 sm:max-w-xl shrink-0">
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500/80 pointer-events-none" />
+                <input
+                  type="search"
+                  value={venueSearchQuery}
+                  onChange={(e) => setVenueSearchQuery(e.target.value)}
+                  placeholder="Search venues…"
+                  className="w-full min-w-0 pl-10 pr-3 py-2.5 bg-white border border-blue-500 rounded-full text-xs sm:text-sm font-black text-slate-800 placeholder:text-slate-400 placeholder:font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all shadow-sm"
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <CustomDropdown
+                  desktopNative
+                  icon={Filter}
+                  value={selectedVenueOrgId}
+                  onChange={setSelectedVenueOrgId}
+                  nativeClassName="w-full pl-4 pr-8 py-2.5 bg-white border border-blue-500 rounded-full text-xs sm:text-sm font-black text-slate-800 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all appearance-none cursor-pointer shadow-sm"
+                  options={[
+                    { value: 'all', label: 'All Organizations' },
+                    ...orgs.map((o) => ({ value: o.id, label: o.name })),
+                  ]}
+                />
+              </div>
             </div>
           </div>
 
@@ -1002,11 +1033,11 @@ export function ManagerView({
                 <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Venues Found</span>
                 <p className="text-xs text-slate-400 max-w-[200px]">Create a venue to start mapping devices and climate zones</p>
               </div>
-            ) : venues.filter((venue) => selectedVenueOrgId === 'all' || venue.orgId === selectedVenueOrgId).length === 0 ? (
+            ) : filteredManagedVenues.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
                 <MapPin className="w-12 h-12 text-slate-300 mb-3" />
                 <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Matching Venues</span>
-                <p className="text-xs text-slate-400 max-w-[200px]">No venues matched your current filter criteria</p>
+                <p className="text-xs text-slate-400 max-w-[200px]">No venues matched your current search or filter</p>
               </div>
             ) : (
               <div className="min-w-full inline-block align-middle overflow-x-auto">
@@ -1018,9 +1049,7 @@ export function ManagerView({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-bold text-[11px] sm:text-xs text-slate-700">
-                    {venues
-                      .filter((venue) => selectedVenueOrgId === 'all' || venue.orgId === selectedVenueOrgId)
-                      .map((venue) => {
+                    {filteredManagedVenues.map((venue) => {
                         return (
                           <tr key={venue.id} className="hover:bg-slate-50/30 transition-all">
                             <td className="py-2 px-4 sm:py-4 sm:px-6 text-xs sm:text-sm font-black text-slate-900">
@@ -1076,30 +1105,41 @@ export function ManagerView({
               </h3>
             </div>
             
-            {/* Filter */}
-            <div className="relative w-full sm:w-64">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <select
-                value={selectedDeviceVenueId}
-                onChange={(e) => setSelectedDeviceVenueId(e.target.value)}
-                className="w-full pl-9 pr-8 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs font-black text-slate-700 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer shadow-sm"
-              >
-                <option value="all">All Venues</option>
-                {venues.map((v) => (
-                  <option key={v.id} value={v.id}>{v.name}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            {/* Search + Filter side by side */}
+            <div className="flex items-center gap-2 w-full min-w-0 sm:max-w-xl shrink-0">
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <input
+                  type="search"
+                  value={deviceSearchQuery}
+                  onChange={(e) => setDeviceSearchQuery(e.target.value)}
+                  placeholder="Search devices…"
+                  className="w-full min-w-0 pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs font-black text-slate-700 placeholder:text-slate-400 placeholder:font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm"
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <CustomDropdown
+                  desktopNative
+                  icon={Filter}
+                  value={selectedDeviceVenueId}
+                  onChange={setSelectedDeviceVenueId}
+                  nativeClassName="w-full pl-4 pr-8 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs font-black text-slate-700 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer shadow-sm"
+                  options={[
+                    { value: 'all', label: 'All Venues' },
+                    ...venues.map((v) => ({ value: v.id, label: v.name })),
+                  ]}
+                />
+              </div>
             </div>
           </div>
 
           {/* Scrollable Table Component Box */}
           <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col scrollbar-thin">
-            {units.filter(unit => selectedDeviceVenueId === 'all' || unit.venueId === selectedDeviceVenueId).length === 0 ? (
+            {filteredManagedDevices.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
                 <MonitorSmartphone className="w-12 h-12 text-slate-300 mb-3" />
                 <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Devices Found</span>
-                <p className="text-xs text-slate-400 max-w-[200px]">No hardware devices matched your current filter criteria</p>
+                <p className="text-xs text-slate-400 max-w-[200px]">No hardware devices matched your current search or filter</p>
               </div>
             ) : (
               <div className="min-w-full inline-block align-middle overflow-x-auto">
@@ -1118,9 +1158,7 @@ export function ManagerView({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-bold text-[11px] sm:text-xs text-slate-700">
-                    {units
-                      .filter(unit => selectedDeviceVenueId === 'all' || unit.venueId === selectedDeviceVenueId)
-                      .map((unit) => {
+                    {filteredManagedDevices.map((unit) => {
                         const isExpanded = expandedDeviceId === unit.id;
                         const associatedVenue = venues.find(v => v.id === unit.venueId);
                         
@@ -1846,17 +1884,18 @@ export function ManagerView({
                 className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-              <select
+              <CustomDropdown
+                desktopNative
                 value={editingUser.status}
-                onChange={(e) => setEditingUser({ ...editingUser, status: e.target.value as any })}
-                className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="pending">Pending</option>
-              </select>
+                onChange={(v) => setEditingUser({ ...editingUser, status: v as any })}
+                options={[
+                  { value: 'active', label: 'Active' },
+                  { value: 'inactive', label: 'Inactive' },
+                  { value: 'pending', label: 'Pending' },
+                ]}
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Assigned Venues</label>
@@ -1967,17 +2006,14 @@ export function ManagerView({
                 className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-sm font-medium text-slate-700 mb-1">Organization</label>
-              <select
+              <CustomDropdown
+                desktopNative
                 value={editingVenue.orgId}
-                onChange={(e) => setEditingVenue({ ...editingVenue, orgId: e.target.value })}
-                className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                {orgs.map((o) => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
-                ))}
-              </select>
+                onChange={(v) => setEditingVenue({ ...editingVenue, orgId: v })}
+                options={orgs.map((o) => ({ value: o.id, label: o.name }))}
+              />
             </div>
             <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
               <button
@@ -2017,43 +2053,44 @@ export function ManagerView({
                 className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-sm font-medium text-slate-700 mb-1">Venue</label>
-              <select
+              <CustomDropdown
+                desktopNative
+                nativeClassName="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold"
                 value={editingDevice.venueId}
-                onChange={(e) => setEditingDevice({ ...editingDevice, venueId: e.target.value })}
-                className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold"
-              >
-                {venues.map((v) => (
-                  <option key={v.id} value={v.id}>{orgs.find(o => o.id === v.orgId)?.name || 'Campus'} - {v.name}</option>
-                ))}
-              </select>
+                onChange={(v) => setEditingDevice({ ...editingDevice, venueId: v })}
+                options={venues.map((v) => ({
+                  value: v.id,
+                  label: `${orgs.find((o) => o.id === v.orgId)?.name || 'Campus'} - ${v.name}`,
+                }))}
+              />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">AC Brand</label>
-              <select
+              <CustomDropdown
+                desktopNative
+                nativeClassName="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold cursor-pointer"
                 value={editingDevice.brand || 'Daikin'}
-                onChange={(e) => setEditingDevice({ ...editingDevice, brand: e.target.value })}
-                className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold cursor-pointer"
-              >
-                {AC_BRANDS.map((b) => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
-              </select>
+                onChange={(v) => setEditingDevice({ ...editingDevice, brand: v })}
+                options={AC_BRANDS.map((b) => ({ value: b, label: b }))}
+              />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">AC Capacity</label>
-              <select
+              <CustomDropdown
+                desktopNative
+                nativeClassName="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold cursor-pointer"
                 value={editingDevice.capacityTon || '1.5ton'}
-                onChange={(e) => setEditingDevice({ ...editingDevice, capacityTon: e.target.value })}
-                className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold cursor-pointer"
-              >
-                <option value="1ton">1.0 Ton</option>
-                <option value="1.5ton">1.5 Ton</option>
-                <option value="2ton">2.0 Ton</option>
-                <option value="2.5ton">2.5 Ton</option>
-                <option value="3.5ton">3.5 Ton</option>
-              </select>
+                onChange={(v) => setEditingDevice({ ...editingDevice, capacityTon: v })}
+                options={[
+                  { value: '1ton', label: '1.0 Ton' },
+                  { value: '1.5ton', label: '1.5 Ton' },
+                  { value: '2ton', label: '2.0 Ton' },
+                  { value: '2.5ton', label: '2.5 Ton' },
+                  { value: '3.5ton', label: '3.5 Ton' },
+                ]}
+              />
             </div>
             <div className="flex items-center gap-2.5 py-1">
               <input

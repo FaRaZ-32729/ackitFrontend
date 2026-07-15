@@ -21,6 +21,7 @@ import {
   BarChart3,
   Cpu
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { useAppContext } from '../context/AppContext';
 
 export function IotfiyLogo({ small }: { small?: boolean }) {
@@ -129,6 +130,9 @@ export function ConsoleLayout() {
     }
     return activeTab === tabId;
   };
+
+  const activeTabIndex = mobileTabs.findIndex((t) => isTabActive(t.id));
+  const tabCount = mobileTabs.length;
 
   return (
     <div className="h-screen bg-slate-50 font-sans text-slate-900 flex flex-col lg:flex-row overflow-hidden relative">
@@ -279,40 +283,65 @@ export function ConsoleLayout() {
         </main>
       </div>
 
-      {/* Mobile Curved Bottom Tab Navigation Bar (Figma Styled, Fixed at Bottom on screens < lg) */}
+      {/* Mobile bottom nav — blue bar with sliding white active scoop */}
       {role !== 'admin' && (
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 px-4 pb-2.5 pt-0.5 bg-gradient-to-t from-slate-100/90 via-slate-50/50 to-transparent backdrop-blur-md">
-          <div className="w-full bg-blue-600 rounded-3xl h-13 shadow-xl shadow-blue-600/20 flex justify-around items-center px-2 relative border border-blue-500/30">
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 px-4 pb-3 pt-1 bg-gradient-to-t from-slate-100/90 via-slate-50/40 to-transparent">
+          <div className="relative w-full bg-blue-600 rounded-[1.85rem] shadow-xl shadow-blue-600/25 flex items-center min-h-[3.4rem] overflow-hidden">
+            {/* Sliding white U-scoop indicator */}
+            {activeTabIndex >= 0 && (
+              <motion.div
+                className="absolute inset-y-0 z-0 flex justify-center pointer-events-none"
+                initial={false}
+                animate={{ left: `${(activeTabIndex / tabCount) * 100}%` }}
+                transition={{ type: 'spring', stiffness: 420, damping: 34, mass: 0.85 }}
+                style={{ width: `${100 / tabCount}%` }}
+              >
+                <div className="relative self-start w-[70%] max-w-[3rem] h-[2.65rem]">
+                  {/* White scoop cut into the blue bar */}
+                  <div className="absolute inset-0 bg-[#f8fafc] rounded-b-[1.55rem]" />
+                  {/* Left concave fillet — hide on first tab so it doesn't poke past the bar edge */}
+                  {activeTabIndex > 0 && (
+                    <svg
+                      className="absolute top-[1.35rem] right-full w-3.5 h-3.5 text-blue-600 fill-current"
+                      viewBox="0 0 16 16"
+                      aria-hidden
+                    >
+                      <path d="M16 0 A 16 16 0 0 0 0 16 H 16 V 0 Z" />
+                    </svg>
+                  )}
+                  {/* Right concave fillet — hide on last tab so it doesn't poke past the bar edge */}
+                  {activeTabIndex < tabCount - 1 && (
+                    <svg
+                      className="absolute top-[1.35rem] left-full w-3.5 h-3.5 text-blue-600 fill-current"
+                      viewBox="0 0 16 16"
+                      aria-hidden
+                    >
+                      <path d="M0 0 A 16 16 0 0 1 16 16 H 0 V 0 Z" />
+                    </svg>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
             {mobileTabs.map((tab) => {
               const Icon = tab.icon;
               const active = isTabActive(tab.id);
-              
+
               return (
-                <div key={tab.id} className="relative flex flex-col items-center justify-center w-12 h-12">
-                  {active && (
-                    <div className="absolute -top-5 w-11 h-11 bg-[#f8fafc] rounded-full shadow-lg shadow-blue-600/10 flex items-center justify-center z-0">
-                      {/* Left Concave Curve */}
-                      <svg className="absolute top-[20px] right-full mr-[-0.5px] w-4 h-4 text-blue-600 fill-current pointer-events-none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M16 0 A 16 16 0 0 0 0 16 H 16 V 0 Z" />
-                      </svg>
-                      {/* Right Concave Curve */}
-                      <svg className="absolute top-[20px] left-full ml-[-0.5px] w-4 h-4 text-blue-600 fill-current pointer-events-none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M0 0 A 16 16 0 0 1 16 16 H 0 V 0 Z" />
-                      </svg>
-                    </div>
-                  )}
-                  <button
-                    onClick={() => handleTabClick(tab.id)}
-                    className={`relative z-10 flex flex-col items-center justify-center transition-all duration-300 outline-none ${
-                      active 
-                        ? 'text-blue-600 -translate-y-5 scale-105' 
-                        : 'text-white/80 hover:text-white p-2 active:scale-95'
-                    }`}
-                    style={{ minWidth: '36px', minHeight: '36px' }}
-                  >
-                    <Icon className="w-5 h-5 shrink-0" />
-                  </button>
-                </div>
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => handleTabClick(tab.id)}
+                  aria-label={tab.label}
+                  aria-current={active ? 'page' : undefined}
+                  className={`
+                    relative z-10 flex-1 min-w-0 flex items-center justify-center self-stretch
+                    outline-none transition-colors duration-300 active:scale-95
+                    ${active ? 'text-blue-600' : 'text-white'}
+                  `}
+                >
+                  <Icon className="w-5 h-5 shrink-0" strokeWidth={active ? 2.5 : 2} />
+                </button>
               );
             })}
           </div>

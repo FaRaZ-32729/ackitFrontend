@@ -8,6 +8,7 @@ import {
   AlertCircle 
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { CustomDropdown } from './CustomDropdown';
 
 interface AddVenueOverlayPageProps {
   onClose: () => void;
@@ -132,24 +133,16 @@ export function AddVenueOverlayPage({ onClose }: AddVenueOverlayPageProps) {
               </div>
 
               {/* Input: Organization Dropdown */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 min-w-0">
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
                   Associated Organization <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
-                  <select
-                    value={orgId}
-                    onChange={(e) => setOrgId(e.target.value)}
-                    className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all appearance-none"
-                  >
-                    {orgs.map((org) => (
-                      <option key={org.id} value={org.id}>
-                        {org.name}
-                      </option>
-                    ))}
-                  </select>
-                  <Building2 className="w-4 h-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
+                <CustomDropdown
+                  value={orgId}
+                  onChange={setOrgId}
+                  icon={Building2}
+                  options={orgs.map((org) => ({ value: org.id, label: org.name }))}
+                />
               </div>
 
             </div>

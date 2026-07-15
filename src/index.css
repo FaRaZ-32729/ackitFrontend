@@ -34,4 +34,21 @@
   .no-spin {
     -moz-appearance: textfield;
   }
+
+  /* Thin scrollbar for mobile custom dropdown lists (overrides global hide) */
+  .dropdown-scroll {
+    scrollbar-width: thin !important;
+    -ms-overflow-style: auto !important;
+  }
+  .dropdown-scroll::-webkit-scrollbar {
+    display: block !important;
+    width: 4px;
+  }
+  .dropdown-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .dropdown-scroll::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 9999px;
+  }
 }
