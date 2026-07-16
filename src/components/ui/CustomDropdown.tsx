@@ -178,7 +178,7 @@ export function CustomDropdown({
     createPortal(
       <>
         <div
-          className="fixed inset-0 z-[60] bg-transparent"
+          className="fixed inset-0 z-[110] bg-transparent"
           aria-hidden
           onClick={() => setOpen(false)}
         />
@@ -186,7 +186,7 @@ export function CustomDropdown({
           id={listId}
           role="listbox"
           className="
-            fixed z-[70] flex flex-col min-w-0
+            fixed z-[120] flex flex-col min-w-0
             bg-white rounded-2xl shadow-xl border border-slate-100
             py-1.5
             animate-in fade-in duration-150
