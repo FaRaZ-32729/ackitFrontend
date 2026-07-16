@@ -14,9 +14,10 @@ import {
 } from 'recharts';
 import { Modal } from './Modal';
 import { CustomDropdown } from './CustomDropdown';
+import { MultiSelectDropdown } from './MultiSelectDropdown';
 import { motion, AnimatePresence } from 'motion/react';
 
-export const AC_BRANDS = [
+const AC_BRANDS = [
   'Daikin',
   'Mitsubishi Electric',
   'Panasonic',
@@ -417,7 +418,7 @@ export function ManagerView({
 
   return (
     <div className={`w-full ${
-      (activeTab === 'dashboard' || activeTab === 'overview' || activeTab === 'organizations' || activeTab === 'venues' || activeTab === 'users' || activeTab === 'devices')
+      (activeTab === 'dashboard' || activeTab === 'overview' || activeTab === 'organizations' || activeTab === 'venues' || activeTab === 'users' || activeTab === 'devices' || activeTab === 'reports')
         ? 'max-w-none h-full flex flex-col overflow-hidden px-0 py-0 space-y-0' 
         : 'max-w-6xl mx-auto p-6 space-y-8'
     }`}>
@@ -794,104 +795,267 @@ export function ManagerView({
       )}
 
       {activeTab === 'users' && (
-        <div className="flex-1 flex flex-col min-h-0 p-6 bg-slate-50/15 overflow-hidden select-none">
+        <div className="flex-1 flex flex-col min-h-0 p-4 md:p-6 bg-slate-50/15 overflow-hidden select-none">
           {/* Header row */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 mb-6">
-            <div>
-              <h3 className="text-lg sm:text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <Users className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 shrink-0" />
-                User Management
-              </h3>
-            </div>
+          <div className="flex items-center justify-between gap-4 shrink-0 mb-4 md:mb-6">
+            <h3 className="text-lg sm:text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2 min-w-0">
+              <Users className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 shrink-0" />
+              <span className="truncate">User Management</span>
+            </h3>
           </div>
 
-          {/* Scrollable Table Component Box */}
-          <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col scrollbar-thin">
-            {users.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-                <Users className="w-12 h-12 text-slate-300 mb-3" />
-                <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Users Found</span>
-                <p className="text-xs text-slate-400 max-w-[200px]">Create or invite users to assign them permissions</p>
+          {/* Large screen: Add User (left) + Users list (right) */}
+          <div className="hidden lg:grid lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)] xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.45fr)] gap-4 xl:gap-6 flex-1 min-h-0">
+            
+            {/* LEFT — Add New User card */}
+            <aside className="min-h-0 min-w-0 flex flex-col bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 shrink-0">
+                <h4 className="text-base font-black text-slate-900 tracking-tight">Add New User</h4>
               </div>
-            ) : (
-              <div className="min-w-full inline-block align-middle overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-100">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider bg-slate-50/50 sticky top-0 backdrop-blur-md z-10 text-left">
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6">Name</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 hidden sm:table-cell">Email</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 hidden sm:table-cell">Venues</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 hidden sm:table-cell">Devices</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 hidden sm:table-cell">Events</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 text-right">Actions</th>
+
+              <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide p-5 space-y-4">
+                <div className="space-y-1.5 min-w-0">
+                  <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
+                    Full Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newUserName}
+                    onChange={(e) => setNewUserName(e.target.value)}
+                    className="w-full min-w-0 p-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Enter user's full name"
+                  />
+                </div>
+
+                <div className="space-y-1.5 min-w-0">
+                  <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
+                    Email <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={newUserEmail}
+                    onChange={(e) => setNewUserEmail(e.target.value)}
+                    className="w-full min-w-0 p-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="user@example.com"
+                  />
+                </div>
+
+                <div className="space-y-1.5 min-w-0">
+                  <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
+                    Status
+                  </label>
+                  <CustomDropdown
+                    value={newUserStatus}
+                    onChange={(v) => setNewUserStatus(v as 'active' | 'inactive')}
+                    options={[
+                      { value: 'active', label: 'Active' },
+                      { value: 'inactive', label: 'Inactive' },
+                    ]}
+                  />
+                </div>
+
+                <div className="space-y-1.5 min-w-0">
+                  <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
+                    Assign Venues
+                  </label>
+                  <MultiSelectDropdown
+                    values={newUserVenues}
+                    onChange={setNewUserVenues}
+                    icon={MapPin}
+                    placeholder="Select venues…"
+                    options={venues.map((v) => ({ value: v.id, label: v.name }))}
+                  />
+                </div>
+              </div>
+
+              <div className="px-5 py-4 border-t border-slate-100 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!newUserName.trim() || !newUserEmail.trim()) return;
+                    onAddUser({
+                      name: newUserName.trim(),
+                      email: newUserEmail.trim(),
+                      status: newUserStatus === 'active' ? 'active' : 'pending',
+                      assignedVenueIds: newUserVenues,
+                      managerId: 'mgr-1',
+                    });
+                    setNewUserName('');
+                    setNewUserEmail('');
+                    setNewUserStatus('active');
+                    setNewUserVenues([]);
+                  }}
+                  disabled={!newUserName.trim() || !newUserEmail.trim()}
+                  className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Create User
+                </button>
+              </div>
+            </aside>
+
+            {/* RIGHT — Users list card */}
+            <section className="min-h-0 min-w-0 flex flex-col bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 shrink-0 flex items-center justify-between gap-3">
+                <h4 className="text-base font-black text-slate-900 tracking-tight">All Users</h4>
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-50 px-2.5 py-1 rounded-full">
+                  {users.length} total
+                </span>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
+                {users.length === 0 ? (
+                  <div className="h-full min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
+                    <Users className="w-12 h-12 text-slate-300 mb-3" />
+                    <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Users Found</span>
+                    <p className="text-xs text-slate-400 max-w-[220px]">Use the form on the left to add your first user</p>
+                  </div>
+                ) : (
+                  <table className="w-full table-fixed border-collapse">
+                    <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-md">
+                      <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider text-left">
+                        <th className="py-3 px-3 xl:px-5 w-[28%]">Name</th>
+                        <th className="py-3 px-3 xl:px-5 w-[34%]">Email</th>
+                        <th className="py-3 px-2 xl:px-4 w-[12%] text-center">Venue</th>
+                        <th className="py-3 px-2 xl:px-4 w-[12%] text-center">Devices</th>
+                        <th className="py-3 px-3 xl:px-5 w-[14%] text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                      {users.map((user) => {
+                        const venueCount = venues.filter((v) => user.assignedVenueIds.includes(v.id)).length;
+                        const deviceCount = units.filter((u) => user.assignedVenueIds.includes(u.venueId)).length;
+
+                        return (
+                          <tr key={user.id} className="hover:bg-slate-50/40 transition-colors">
+                            <td className="py-3 px-3 xl:px-5 align-middle">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                  <User className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0 flex flex-col">
+                                  <span className="font-extrabold text-slate-900 truncate">{user.name}</span>
+                                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                                    {user.status === 'pending' ? 'Pending Onboarding' : user.status}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 xl:px-5 align-middle">
+                              <span className="block truncate text-slate-500 font-medium" title={user.email}>
+                                {user.email}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2 xl:px-4 text-center align-middle">
+                              <button
+                                type="button"
+                                onClick={() => openUserDetailModal(user, 'venues')}
+                                className="font-black text-blue-600 hover:text-blue-700 tabular-nums cursor-pointer"
+                                title="View venues"
+                              >
+                                {venueCount}
+                              </button>
+                            </td>
+                            <td className="py-3 px-2 xl:px-4 text-center align-middle">
+                              <button
+                                type="button"
+                                onClick={() => openUserDetailModal(user, 'devices')}
+                                className="font-black text-emerald-600 hover:text-emerald-700 tabular-nums cursor-pointer"
+                                title="View devices"
+                              >
+                                {deviceCount}
+                              </button>
+                            </td>
+                            <td className="py-3 px-3 xl:px-5 text-right align-middle">
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingUser(user)}
+                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
+                                  title="Edit"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDeletingId(user.id);
+                                    setDeleteType('user');
+                                  }}
+                                  className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </section>
+          </div>
+
+          {/* Mobile / tablet: list only (add via overlay) */}
+          <div className="lg:hidden flex-1 min-h-0 overflow-hidden bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col">
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
+              {users.length === 0 ? (
+                <div className="flex-1 min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
+                  <Users className="w-12 h-12 text-slate-300 mb-3" />
+                  <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Users Found</span>
+                  <p className="text-xs text-slate-400 max-w-[200px]">Create or invite users to assign them permissions</p>
+                </div>
+              ) : (
+                <table className="w-full table-fixed border-collapse">
+                  <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-md">
+                    <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider text-left">
+                      <th className="py-3 px-4 w-[48%]">Name</th>
+                      <th className="py-3 px-2 w-[16%] text-center">Venue</th>
+                      <th className="py-3 px-2 w-[16%] text-center">Devices</th>
+                      <th className="py-3 px-4 w-[20%] text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 font-bold text-[11px] sm:text-xs text-slate-700">
+                  <tbody className="divide-y divide-slate-100 text-[11px] text-slate-700">
                     {users.map((user) => {
-                      const userVenues = venues.filter(v => user.assignedVenueIds.includes(v.id));
-                      const userUnits = units.filter(u => user.assignedVenueIds.includes(u.venueId));
-                      const userEvents = userUnits.reduce((acc, u) => acc + u.events.length, 0);
+                      const venueCount = venues.filter((v) => user.assignedVenueIds.includes(v.id)).length;
+                      const deviceCount = units.filter((u) => user.assignedVenueIds.includes(u.venueId)).length;
 
                       return (
-                        <tr key={user.id} className="hover:bg-slate-50/30 transition-all">
-                          <td className="py-2 px-4 sm:py-4 sm:px-6 text-xs sm:text-sm font-black text-slate-900">
-                            <div className="flex items-center gap-2 sm:gap-3">
-                              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                                <User className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+                        <tr key={user.id} className="hover:bg-slate-50/30">
+                          <td className="py-2.5 px-4 align-middle">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                <User className="w-4 h-4" />
                               </div>
-                              <div className="flex flex-col truncate max-w-[140px] sm:max-w-none">
-                                <span className="font-extrabold text-slate-900">{user.name}</span>
-                                <span className="text-[9px] sm:text-[10px] font-semibold text-slate-400 mt-0.5 uppercase tracking-wider">
-                                  {user.status === 'pending' ? 'Pending Onboarding' : user.status}
+                              <div className="min-w-0 flex flex-col">
+                                <span className="font-extrabold text-slate-900 truncate">{user.name}</span>
+                                <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                                  {user.status === 'pending' ? 'Pending' : user.status}
                                 </span>
                               </div>
                             </div>
                           </td>
-                          <td className="py-2 px-4 sm:py-4 sm:px-6 text-slate-500 font-medium hidden sm:table-cell">
-                            {user.email}
-                          </td>
-                          <td className="py-2 px-4 sm:py-4 sm:px-6 hidden sm:table-cell">
-                            <button
-                              onClick={() => openUserDetailModal(user, 'venues')}
-                              className="px-2.5 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-all text-xs font-black inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <span>{userVenues.length}</span>
-                              <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Venues</span>
-                            </button>
-                          </td>
-                          <td className="py-2 px-4 sm:py-4 sm:px-6 hidden sm:table-cell">
-                            <button
-                              onClick={() => openUserDetailModal(user, 'devices')}
-                              className="px-2.5 py-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-all text-xs font-black inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <span>{userUnits.length}</span>
-                              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Devices</span>
-                            </button>
-                          </td>
-                          <td className="py-2 px-4 sm:py-4 sm:px-6 hidden sm:table-cell">
-                            <button
-                              onClick={() => openUserDetailModal(user, 'events')}
-                              className="px-2.5 py-1 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-lg transition-all text-xs font-black inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <span>{userEvents}</span>
-                              <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider">Events</span>
-                            </button>
-                          </td>
-                          <td className="py-2 px-4 sm:py-4 sm:px-6 text-right">
-                            <div className="flex justify-end gap-1 sm:gap-1.5">
-                              <button 
+                          <td className="py-2.5 px-2 text-center font-black text-blue-600 tabular-nums">{venueCount}</td>
+                          <td className="py-2.5 px-2 text-center font-black text-emerald-600 tabular-nums">{deviceCount}</td>
+                          <td className="py-2.5 px-4 text-right">
+                            <div className="flex justify-end gap-1">
+                              <button
+                                type="button"
                                 onClick={() => setEditingUser(user)}
-                                className="p-1.5 sm:px-2.5 sm:py-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all flex items-center justify-center cursor-pointer"
+                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
                                 title="Edit"
                               >
                                 <Edit className="w-3.5 h-3.5" />
                               </button>
-                              <button 
+                              <button
+                                type="button"
                                 onClick={() => {
                                   setDeletingId(user.id);
                                   setDeleteType('user');
                                 }}
-                                className="p-1.5 sm:px-2.5 sm:py-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-all flex items-center justify-center cursor-pointer"
+                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
                                 title="Delete"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -903,102 +1067,241 @@ export function ManagerView({
                     })}
                   </tbody>
                 </table>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {activeTab === 'organizations' && (
-        <div className="flex-1 flex flex-col min-h-0 p-6 bg-slate-50/15 overflow-hidden select-none">
-          {/* Header row */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 mb-6">
-            <div>
-              <h3 className="text-lg sm:text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 shrink-0" />
-                Organization Management
-              </h3>
-            </div>
+        <div className="flex-1 flex flex-col min-h-0 p-4 md:p-6 bg-slate-50/15 overflow-hidden select-none">
+          <div className="flex items-center justify-between gap-4 shrink-0 mb-4 md:mb-6">
+            <h3 className="text-lg sm:text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2 min-w-0">
+              <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 shrink-0" />
+              <span className="truncate">Organization Management</span>
+            </h3>
           </div>
 
-          {/* Scrollable Table Component Box */}
-          <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col scrollbar-thin">
-            {orgs.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-                <Building2 className="w-12 h-12 text-slate-300 mb-3" />
-                <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Organizations Found</span>
-                <p className="text-xs text-slate-400 max-w-[200px]">Create an organization to start mapping venues and climate zones</p>
+          {/* Large screen: Add Org (left) + Org list (right) */}
+          <div className="hidden lg:grid lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)] xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.45fr)] gap-4 xl:gap-6 flex-1 min-h-0">
+            <aside className="min-h-0 min-w-0 flex flex-col bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 shrink-0">
+                <h4 className="text-base font-black text-slate-900 tracking-tight">Add New Organization</h4>
               </div>
-            ) : (
-              <div className="min-w-full inline-block align-middle overflow-x-hidden">
-                <table className="min-w-full divide-y divide-slate-100">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider bg-slate-50/50 sticky top-0 backdrop-blur-md z-10 text-left">
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6">Organization</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 text-right">
-                        <span className="hidden sm:inline">Quick </span>Actions
-                      </th>
+
+              <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide p-5 space-y-4">
+                <div className="space-y-1.5 min-w-0">
+                  <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
+                    Organization Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newOrgName}
+                    onChange={(e) => setNewOrgName(e.target.value)}
+                    className="w-full min-w-0 p-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="e.g. Acme Corp"
+                  />
+                </div>
+
+                <div className="space-y-1.5 min-w-0">
+                  <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
+                    Address
+                  </label>
+                  <input
+                    type="text"
+                    value={newOrgAddress}
+                    onChange={(e) => setNewOrgAddress(e.target.value)}
+                    className="w-full min-w-0 p-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Optional address"
+                  />
+                </div>
+
+                <div className="space-y-1.5 min-w-0">
+                  <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
+                    Description
+                  </label>
+                  <input
+                    type="text"
+                    value={newOrgDescription}
+                    onChange={(e) => setNewOrgDescription(e.target.value)}
+                    className="w-full min-w-0 p-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Optional description"
+                  />
+                </div>
+              </div>
+
+              <div className="px-5 py-4 border-t border-slate-100 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!newOrgName.trim()) return;
+                    onAddOrg({
+                      name: newOrgName.trim(),
+                      address: newOrgAddress.trim() || undefined,
+                      description: newOrgDescription.trim() || undefined,
+                      managerId: 'mgr-1',
+                    });
+                    setNewOrgName('');
+                    setNewOrgAddress('');
+                    setNewOrgDescription('');
+                  }}
+                  disabled={!newOrgName.trim()}
+                  className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Create Organization
+                </button>
+              </div>
+            </aside>
+
+            <section className="min-h-0 min-w-0 flex flex-col bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 shrink-0 flex items-center justify-between gap-3">
+                <h4 className="text-base font-black text-slate-900 tracking-tight">All Organizations</h4>
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-50 px-2.5 py-1 rounded-full">
+                  {orgs.length} total
+                </span>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
+                {orgs.length === 0 ? (
+                  <div className="h-full min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
+                    <Building2 className="w-12 h-12 text-slate-300 mb-3" />
+                    <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Organizations Found</span>
+                    <p className="text-xs text-slate-400 max-w-[220px]">Use the form on the left to add your first organization</p>
+                  </div>
+                ) : (
+                  <table className="w-full table-fixed border-collapse">
+                    <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-md">
+                      <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider text-left">
+                        <th className="py-3 px-3 xl:px-5 w-[36%]">Name</th>
+                        <th className="py-3 px-3 xl:px-5 w-[34%]">Address</th>
+                        <th className="py-3 px-2 xl:px-4 w-[14%] text-center">Venues</th>
+                        <th className="py-3 px-3 xl:px-5 w-[16%] text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                      {orgs.map((org) => {
+                        const venueCount = venues.filter((v) => v.orgId === org.id).length;
+                        return (
+                          <tr key={org.id} className="hover:bg-slate-50/40 transition-colors">
+                            <td className="py-3 px-3 xl:px-5 align-middle">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                  <Building2 className="w-4 h-4" />
+                                </div>
+                                <span className="font-extrabold text-slate-900 truncate">{org.name}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 xl:px-5 align-middle">
+                              <span className="block truncate text-slate-500 font-medium" title={org.address || ''}>
+                                {org.address || '—'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2 xl:px-4 text-center align-middle font-black text-blue-600 tabular-nums">
+                              {venueCount}
+                            </td>
+                            <td className="py-3 px-3 xl:px-5 text-right align-middle">
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingOrg(org)}
+                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
+                                  title="Edit"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDeletingId(org.id);
+                                    setDeleteType('org');
+                                  }}
+                                  className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </section>
+          </div>
+
+          {/* Mobile / tablet: list only */}
+          <div className="lg:hidden flex-1 min-h-0 overflow-hidden bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col">
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
+              {orgs.length === 0 ? (
+                <div className="flex-1 min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
+                  <Building2 className="w-12 h-12 text-slate-300 mb-3" />
+                  <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Organizations Found</span>
+                  <p className="text-xs text-slate-400 max-w-[200px]">Create an organization to start mapping venues</p>
+                </div>
+              ) : (
+                <table className="w-full table-fixed border-collapse">
+                  <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-md">
+                    <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider text-left">
+                      <th className="py-3 px-4 w-[55%]">Name</th>
+                      <th className="py-3 px-2 w-[20%] text-center">Venues</th>
+                      <th className="py-3 px-4 w-[25%] text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 font-bold text-[11px] sm:text-xs text-slate-700">
-                    {orgs.map((org) => (
-                      <tr key={org.id} className="hover:bg-slate-50/30 transition-all">
-                        <td className="py-2 px-4 sm:py-4 sm:px-6 text-xs sm:text-sm font-black text-slate-900">
-                          <div className="flex items-center gap-2 sm:gap-3">
-                            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                              <Building2 className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+                  <tbody className="divide-y divide-slate-100 text-[11px] text-slate-700">
+                    {orgs.map((org) => {
+                      const venueCount = venues.filter((v) => v.orgId === org.id).length;
+                      return (
+                        <tr key={org.id} className="hover:bg-slate-50/30">
+                          <td className="py-2.5 px-4 align-middle">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                <Building2 className="w-4 h-4" />
+                              </div>
+                              <span className="font-extrabold text-slate-900 truncate">{org.name}</span>
                             </div>
-                            <span className="font-extrabold text-slate-900 truncate max-w-[140px] sm:max-w-none">
-                              {org.name}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-2 px-4 sm:py-4 sm:px-6 text-right">
-                          <div className="flex justify-end gap-1 sm:gap-1.5">
-                            <button 
-                              onClick={() => setEditingOrg(org)}
-                              className="p-1.5 sm:px-2.5 sm:py-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700 rounded-lg transition-all flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-bold cursor-pointer"
-                              title="Edit"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Edit</span>
-                            </button>
-                            <button 
-                              onClick={() => {
-                                setDeletingId(org.id);
-                                setDeleteType('org');
-                              }}
-                              className="p-1.5 sm:px-2.5 sm:py-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-bold cursor-pointer"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Delete</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="py-2.5 px-2 text-center font-black text-blue-600 tabular-nums">{venueCount}</td>
+                          <td className="py-2.5 px-4 text-right">
+                            <div className="flex justify-end gap-1">
+                              <button type="button" onClick={() => setEditingOrg(org)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg" title="Edit">
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeletingId(org.id);
+                                  setDeleteType('org');
+                                }}
+                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {activeTab === 'venues' && (
-        <div className="flex-1 flex flex-col min-h-0 p-6 bg-slate-50/15 overflow-hidden select-none">
-          {/* Header row */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 mb-6">
-            <div>
-              <h3 className="text-lg sm:text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <MapPin className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 shrink-0" />
-                Venue Management
-              </h3>
-            </div>
+        <div className="flex-1 flex flex-col min-h-0 p-4 md:p-6 bg-slate-50/15 overflow-hidden select-none">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 mb-4 md:mb-6">
+            <h3 className="text-lg sm:text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2 min-w-0">
+              <MapPin className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 shrink-0" />
+              <span className="truncate">Venue Management</span>
+            </h3>
 
-            {/* Search + Filter side by side */}
-            <div className="flex items-center gap-2 w-full min-w-0 sm:max-w-xl shrink-0">
+            <div className="flex items-center gap-2 w-full min-w-0 sm:max-w-xl shrink-0 lg:hidden">
               <div className="relative flex-1 min-w-0">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500/80 pointer-events-none" />
                 <input
@@ -1011,11 +1314,9 @@ export function ManagerView({
               </div>
               <div className="flex-1 min-w-0">
                 <CustomDropdown
-                  desktopNative
                   icon={Filter}
                   value={selectedVenueOrgId}
                   onChange={setSelectedVenueOrgId}
-                  nativeClassName="w-full pl-4 pr-8 py-2.5 bg-white border border-blue-500 rounded-full text-xs sm:text-sm font-black text-slate-800 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all appearance-none cursor-pointer shadow-sm"
                   options={[
                     { value: 'all', label: 'All Organizations' },
                     ...orgs.map((o) => ({ value: o.id, label: o.name })),
@@ -1025,439 +1326,580 @@ export function ManagerView({
             </div>
           </div>
 
-          {/* Scrollable Table Component Box */}
-          <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col scrollbar-thin">
-            {venues.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-                <MapPin className="w-12 h-12 text-slate-300 mb-3" />
-                <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Venues Found</span>
-                <p className="text-xs text-slate-400 max-w-[200px]">Create a venue to start mapping devices and climate zones</p>
+          {/* Large screen: Add Venue (left) + Venue list (right) */}
+          <div className="hidden lg:grid lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)] xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.45fr)] gap-4 xl:gap-6 flex-1 min-h-0">
+            <aside className="min-h-0 min-w-0 flex flex-col bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 shrink-0">
+                <h4 className="text-base font-black text-slate-900 tracking-tight">Add New Venue</h4>
               </div>
-            ) : filteredManagedVenues.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-                <MapPin className="w-12 h-12 text-slate-300 mb-3" />
-                <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Matching Venues</span>
-                <p className="text-xs text-slate-400 max-w-[200px]">No venues matched your current search or filter</p>
+
+              <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide p-5 space-y-4">
+                <div className="space-y-1.5 min-w-0">
+                  <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
+                    Venue Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newVenueName}
+                    onChange={(e) => setNewVenueName(e.target.value)}
+                    className="w-full min-w-0 p-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="e.g. Main Auditorium"
+                  />
+                </div>
+
+                <div className="space-y-1.5 min-w-0">
+                  <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
+                    Organization <span className="text-red-500">*</span>
+                  </label>
+                  <CustomDropdown
+                    value={newVenueOrgId || orgs[0]?.id || ''}
+                    onChange={setNewVenueOrgId}
+                    icon={Building2}
+                    placeholder="Select organization…"
+                    options={orgs.map((o) => ({ value: o.id, label: o.name }))}
+                  />
+                </div>
               </div>
-            ) : (
-              <div className="min-w-full inline-block align-middle overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-100">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider bg-slate-50/50 sticky top-0 backdrop-blur-md z-10 text-left">
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6">Venue Name</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-bold text-[11px] sm:text-xs text-slate-700">
-                    {filteredManagedVenues.map((venue) => {
+
+              <div className="px-5 py-4 border-t border-slate-100 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const orgId = newVenueOrgId || orgs[0]?.id || '';
+                    if (!newVenueName.trim() || !orgId) return;
+                    onAddVenue({
+                      name: newVenueName.trim(),
+                      orgId,
+                    });
+                    setNewVenueName('');
+                    setNewVenueOrgId(orgs[0]?.id || '');
+                  }}
+                  disabled={!newVenueName.trim() || !(newVenueOrgId || orgs[0]?.id)}
+                  className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Create Venue
+                </button>
+              </div>
+            </aside>
+
+            <section className="min-h-0 min-w-0 flex flex-col bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 shrink-0 flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-base font-black text-slate-900 tracking-tight">All Venues</h4>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-50 px-2.5 py-1 rounded-full">
+                    {filteredManagedVenues.length} shown
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="relative flex-1 min-w-0">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                    <input
+                      type="search"
+                      value={venueSearchQuery}
+                      onChange={(e) => setVenueSearchQuery(e.target.value)}
+                      placeholder="Search venues…"
+                      className="w-full min-w-0 pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0 max-w-[14rem]">
+                    <CustomDropdown
+                      icon={Filter}
+                      value={selectedVenueOrgId}
+                      onChange={setSelectedVenueOrgId}
+                      options={[
+                        { value: 'all', label: 'All Organizations' },
+                        ...orgs.map((o) => ({ value: o.id, label: o.name })),
+                      ]}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
+                {venues.length === 0 ? (
+                  <div className="h-full min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
+                    <MapPin className="w-12 h-12 text-slate-300 mb-3" />
+                    <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Venues Found</span>
+                    <p className="text-xs text-slate-400 max-w-[220px]">Use the form on the left to add your first venue</p>
+                  </div>
+                ) : filteredManagedVenues.length === 0 ? (
+                  <div className="h-full min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
+                    <MapPin className="w-12 h-12 text-slate-300 mb-3" />
+                    <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Matching Venues</span>
+                    <p className="text-xs text-slate-400 max-w-[200px]">No venues matched your current search or filter</p>
+                  </div>
+                ) : (
+                  <table className="w-full table-fixed border-collapse">
+                    <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-md">
+                      <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider text-left">
+                        <th className="py-3 px-3 xl:px-5 w-[34%]">Name</th>
+                        <th className="py-3 px-3 xl:px-5 w-[34%]">Organization</th>
+                        <th className="py-3 px-2 xl:px-4 w-[14%] text-center">Devices</th>
+                        <th className="py-3 px-3 xl:px-5 w-[18%] text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                      {filteredManagedVenues.map((venue) => {
+                        const orgName = orgs.find((o) => o.id === venue.orgId)?.name || '—';
+                        const deviceCount = units.filter((u) => u.venueId === venue.id).length;
                         return (
-                          <tr key={venue.id} className="hover:bg-slate-50/30 transition-all">
-                            <td className="py-2 px-4 sm:py-4 sm:px-6 text-xs sm:text-sm font-black text-slate-900">
-                              <div className="flex items-center gap-2 sm:gap-3">
-                                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                                  <MapPin className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+                          <tr key={venue.id} className="hover:bg-slate-50/40 transition-colors">
+                            <td className="py-3 px-3 xl:px-5 align-middle">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                  <MapPin className="w-4 h-4" />
                                 </div>
-                                <span className="font-extrabold text-slate-900 truncate max-w-[140px] sm:max-w-none">{venue.name}</span>
+                                <span className="font-extrabold text-slate-900 truncate">{venue.name}</span>
                               </div>
                             </td>
-                            <td className="py-2 px-4 sm:py-4 sm:px-6 text-right">
-                              <div className="flex justify-end gap-1 sm:gap-1.5">
-                                <button 
+                            <td className="py-3 px-3 xl:px-5 align-middle">
+                              <span className="block truncate text-slate-500 font-medium" title={orgName}>
+                                {orgName}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2 xl:px-4 text-center align-middle font-black text-emerald-600 tabular-nums">
+                              {deviceCount}
+                            </td>
+                            <td className="py-3 px-3 xl:px-5 text-right align-middle">
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  type="button"
                                   onClick={() => setEditingVenue(venue)}
-                                  className="p-1.5 sm:px-2.5 sm:py-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700 rounded-lg transition-all flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-bold cursor-pointer"
+                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
                                   title="Edit"
                                 >
                                   <Edit className="w-3.5 h-3.5" />
-                                  <span className="hidden sm:inline">Edit</span>
                                 </button>
-                                <button 
+                                <button
+                                  type="button"
                                   onClick={() => {
                                     setDeletingId(venue.id);
                                     setDeleteType('venue');
                                   }}
-                                  className="p-1.5 sm:px-2.5 sm:py-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-bold cursor-pointer"
+                                  className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
                                   title="Delete"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
-                                  <span className="hidden sm:inline">Delete</span>
                                 </button>
                               </div>
                             </td>
                           </tr>
                         );
                       })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </section>
+          </div>
+
+          {/* Mobile / tablet: list only */}
+          <div className="lg:hidden flex-1 min-h-0 overflow-hidden bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col">
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
+              {venues.length === 0 ? (
+                <div className="flex-1 min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
+                  <MapPin className="w-12 h-12 text-slate-300 mb-3" />
+                  <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Venues Found</span>
+                  <p className="text-xs text-slate-400 max-w-[200px]">Create a venue to start mapping devices</p>
+                </div>
+              ) : filteredManagedVenues.length === 0 ? (
+                <div className="flex-1 min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
+                  <MapPin className="w-12 h-12 text-slate-300 mb-3" />
+                  <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Matching Venues</span>
+                  <p className="text-xs text-slate-400 max-w-[200px]">No venues matched your current search or filter</p>
+                </div>
+              ) : (
+                <table className="w-full table-fixed border-collapse">
+                  <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-md">
+                    <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider text-left">
+                      <th className="py-3 px-4 w-[55%]">Name</th>
+                      <th className="py-3 px-2 w-[20%] text-center">Devices</th>
+                      <th className="py-3 px-4 w-[25%] text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-[11px] text-slate-700">
+                    {filteredManagedVenues.map((venue) => {
+                      const deviceCount = units.filter((u) => u.venueId === venue.id).length;
+                      return (
+                        <tr key={venue.id} className="hover:bg-slate-50/30">
+                          <td className="py-2.5 px-4 align-middle">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                                <MapPin className="w-4 h-4" />
+                              </div>
+                              <span className="font-extrabold text-slate-900 truncate">{venue.name}</span>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-2 text-center font-black text-emerald-600 tabular-nums">{deviceCount}</td>
+                          <td className="py-2.5 px-4 text-right">
+                            <div className="flex justify-end gap-1">
+                              <button type="button" onClick={() => setEditingVenue(venue)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg" title="Edit">
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeletingId(venue.id);
+                                  setDeleteType('venue');
+                                }}
+                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {activeTab === 'devices' && (
-        <div className="flex-1 flex flex-col min-h-0 p-6 bg-slate-50/15 overflow-hidden select-none">
+        <div className="flex-1 flex flex-col min-h-0 p-4 md:p-5 bg-slate-50/15 overflow-hidden select-none">
           {/* Header row */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0 mb-6">
-            <div>
-              <h3 className="text-lg sm:text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <MonitorSmartphone className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 shrink-0" />
-                Device Management
-              </h3>
-            </div>
+          <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3 shrink-0 mb-4">
+            <h3 className="text-lg sm:text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2 min-w-0">
+              <MonitorSmartphone className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 shrink-0" />
+              <span className="truncate">Device Management</span>
+            </h3>
             
-            {/* Search + Filter side by side */}
-            <div className="flex items-center gap-2 w-full min-w-0 sm:max-w-xl shrink-0">
-              <div className="relative flex-1 min-w-0">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <div className="flex items-center gap-2 w-full lg:w-auto min-w-0 flex-wrap lg:flex-nowrap">
+              <div className="relative flex-1 min-w-0 lg:w-44">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                 <input
                   type="search"
                   value={deviceSearchQuery}
                   onChange={(e) => setDeviceSearchQuery(e.target.value)}
                   placeholder="Search devices…"
-                  className="w-full min-w-0 pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs font-black text-slate-700 placeholder:text-slate-400 placeholder:font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all shadow-sm"
+                  className="w-full min-w-0 pl-8 pr-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/15 focus:border-blue-500 outline-none transition-all shadow-sm"
                 />
               </div>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 lg:w-40">
                 <CustomDropdown
-                  desktopNative
                   icon={Filter}
                   value={selectedDeviceVenueId}
                   onChange={setSelectedDeviceVenueId}
-                  nativeClassName="w-full pl-4 pr-8 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs font-black text-slate-700 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer shadow-sm"
                   options={[
                     { value: 'all', label: 'All Venues' },
                     ...venues.map((v) => ({ value: v.id, label: v.name })),
                   ]}
                 />
               </div>
+              <button
+                type="button"
+                onClick={() => setShowAddDevice(true)}
+                className="shrink-0 inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-wider rounded-xl shadow-sm shadow-blue-600/15 transition-all active:scale-95"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span className="hidden sm:inline">Add Device</span>
+                <span className="sm:hidden">Add</span>
+              </button>
             </div>
           </div>
 
-          {/* Scrollable Table Component Box */}
-          <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col scrollbar-thin">
-            {filteredManagedDevices.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-                <MonitorSmartphone className="w-12 h-12 text-slate-300 mb-3" />
-                <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Devices Found</span>
-                <p className="text-xs text-slate-400 max-w-[200px]">No hardware devices matched your current search or filter</p>
-              </div>
-            ) : (
-              <div className="min-w-full inline-block align-middle overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-100">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider bg-slate-50/50 sticky top-0 backdrop-blur-md z-10 text-left">
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6">Device Name</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 hidden sm:table-cell">Venue</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 text-center hidden sm:table-cell">Temp Setpoint</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 text-center hidden sm:table-cell">Power Status</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 text-center hidden sm:table-cell">Power Draw</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 text-center hidden sm:table-cell">Lock Status</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 text-center hidden sm:table-cell">Diagnostics</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 text-center hidden sm:table-cell">Schedules</th>
-                      <th className="py-3 px-4 sm:py-3.5 sm:px-6 text-right">Actions</th>
+          {/* Devices table card */}
+          <div className="flex-1 min-h-0 overflow-hidden bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col">
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
+              {filteredManagedDevices.length === 0 ? (
+                <div className="h-full min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
+                  <MonitorSmartphone className="w-12 h-12 text-slate-300 mb-3" />
+                  <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Devices Found</span>
+                  <p className="text-xs text-slate-400 max-w-[200px]">No hardware devices matched your current search or filter</p>
+                </div>
+              ) : (
+                <table className="w-full table-fixed border-collapse">
+                  <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-md">
+                    <tr className="border-b border-slate-100 text-[9px] font-black uppercase text-slate-400 tracking-wider text-left">
+                      <th className="py-2.5 pl-5 pr-0 w-[18%]">Name</th>
+                      <th className="py-2.5 px-0.5 w-[9%] hidden sm:table-cell">Venue</th>
+                      <th className="py-2.5 px-0.5 w-[12%] text-center hidden sm:table-cell">Temp</th>
+                      <th className="py-2.5 px-0.5 w-[9%] text-center hidden sm:table-cell">Status</th>
+                      <th className="py-2.5 px-0.5 w-[9%] text-center hidden md:table-cell">Power</th>
+                      <th className="py-2.5 px-0.5 w-[13%] text-center hidden sm:table-cell">Lock</th>
+                      <th className="py-2.5 px-0.5 w-[6%] text-center hidden sm:table-cell">Diag</th>
+                      <th className="py-2.5 px-0.5 w-[7%] text-center hidden md:table-cell">Event</th>
+                      <th className="py-2.5 pl-0 pr-5 w-[12%] text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 font-bold text-[11px] sm:text-xs text-slate-700">
+                  <tbody className="divide-y divide-slate-100 text-[11px] text-slate-700">
                     {filteredManagedDevices.map((unit) => {
-                        const isExpanded = expandedDeviceId === unit.id;
-                        const associatedVenue = venues.find(v => v.id === unit.venueId);
-                        
-                        const currentInputVal = deviceTempInputs[unit.id] ?? unit.targetTemp.toString();
-                        const parsedInputVal = parseInt(currentInputVal);
-                        const isTempValid = !isNaN(parsedInputVal) && parsedInputVal >= 16 && parsedInputVal <= 30;
-                        const hasTempChanged = currentInputVal !== unit.targetTemp.toString();
+                      const isExpanded = expandedDeviceId === unit.id;
+                      const associatedVenue = venues.find(v => v.id === unit.venueId);
+                      const currentInputVal = deviceTempInputs[unit.id] ?? unit.targetTemp.toString();
+                      const displayName = unit.name.length > 6 ? `${unit.name.slice(0, 6)}...` : unit.name;
 
-                        const handleApplyTemp = () => {
-                          if (deviceTempSuccess[unit.id]) return;
-                          onUpdateDevice(unit.id, { targetTemp: parsedInputVal });
-                          setDeviceTempSuccess(prev => ({ ...prev, [unit.id]: true }));
-                          setDeviceTempInputs(prev => ({ ...prev, [unit.id]: parsedInputVal.toString() }));
-                        };
+                      const lockValue =
+                        unit.isLocked && unit.eventLocked
+                          ? 'Super Locked'
+                          : unit.isLocked
+                            ? 'Locked'
+                            : 'Unlocked';
 
-                        return (
-                          <React.Fragment key={unit.id}>
-                            <tr className="hover:bg-slate-50/30 transition-all">
-                              <td className="py-2 px-4 sm:py-4 sm:px-6 text-xs sm:text-sm font-black text-slate-900">
-                                <div className="flex items-center gap-2 sm:gap-3">
-                                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                                    <MonitorSmartphone className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-                                  </div>
-                                  <span className="font-extrabold text-slate-900 truncate max-w-[140px] sm:max-w-none">{unit.name}</span>
+                      const applyTemp = (next: number) => {
+                        const clamped = Math.max(16, Math.min(30, next));
+                        setDeviceTempInputs(prev => ({ ...prev, [unit.id]: clamped.toString() }));
+                        onUpdateDevice(unit.id, { targetTemp: clamped });
+                      };
+
+                      return (
+                        <React.Fragment key={unit.id}>
+                          <tr className="hover:bg-slate-50/40 transition-colors">
+                            <td className="py-2 pl-5 pr-0 align-middle">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                                  <MonitorSmartphone className="w-3.5 h-3.5" />
                                 </div>
-                              </td>
-                              <td className="py-2 px-4 sm:py-4 sm:px-6 text-slate-500 hidden sm:table-cell">
-                                {associatedVenue?.name || <span className="text-slate-300 italic font-semibold">No Venue</span>}
-                              </td>
-                              <td className="py-2 px-4 sm:py-4 sm:px-6 hidden sm:table-cell">
-                                <div className="flex justify-center">
-                                  <div className={`flex items-center bg-slate-50 border border-slate-200 rounded-full p-0.5 shadow-sm ${!unit.isOn ? 'opacity-40 grayscale' : ''}`}>
-                                    <button 
-                                      onClick={() => {
-                                        if (!unit.isOn) return;
-                                        const currentVal = parseInt(currentInputVal) || unit.targetTemp;
-                                        const newVal = Math.max(16, currentVal - 1);
-                                        setDeviceTempInputs(prev => ({ ...prev, [unit.id]: newVal.toString() }));
-                                        if (deviceTempSuccess[unit.id]) {
-                                          setDeviceTempSuccess(prev => ({ ...prev, [unit.id]: false }));
-                                        }
-                                      }}
-                                      disabled={!unit.isOn}
-                                      className={`w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-white rounded-full transition-all font-black text-xs ${!unit.isOn ? 'cursor-not-allowed' : 'cursor-pointer active:scale-90'}`}
-                                    >
-                                      -
-                                    </button>
-                                    <div className="relative flex items-center justify-center w-12">
-                                      <input 
-                                        type="number"
-                                        min="16"
-                                        max="30"
-                                        value={currentInputVal}
-                                        disabled={!unit.isOn}
-                                        onChange={(e) => {
-                                          let rawVal = e.target.value;
-                                          if (rawVal !== '') {
-                                            const val = parseInt(rawVal);
-                                            if (!isNaN(val)) {
-                                              if (val > 30) rawVal = '30';
-                                              else if (val < 16 && rawVal.length >= 2) rawVal = '16';
-                                            }
-                                          }
-                                          setDeviceTempInputs(prev => ({ ...prev, [unit.id]: rawVal }));
-                                          if (deviceTempSuccess[unit.id]) {
-                                            setDeviceTempSuccess(prev => ({ ...prev, [unit.id]: false }));
-                                          }
-                                        }}
-                                        onBlur={() => {
-                                          let val = parseInt(currentInputVal);
-                                          if (isNaN(val) || val < 16) val = 16;
-                                          if (val > 30) val = 30;
-                                          setDeviceTempInputs(prev => ({ ...prev, [unit.id]: val.toString() }));
-                                        }}
-                                        onKeyDown={(e) => {
-                                          if (e.key === 'Enter' && hasTempChanged && isTempValid) {
-                                            handleApplyTemp();
-                                          }
-                                        }}
-                                        className={`w-full text-center font-black text-xs text-slate-800 bg-transparent outline-none no-spin ${!unit.isOn ? 'cursor-not-allowed' : ''} ${((hasTempChanged && isTempValid) || deviceTempSuccess[unit.id]) ? 'pr-4 pl-0.5' : 'px-0.5'}`}
-                                      />
-                                      <AnimatePresence>
-                                        {((hasTempChanged && isTempValid) || deviceTempSuccess[unit.id]) && (
-                                          <motion.button
-                                            initial={{ opacity: 0, scale: 0.8 }}
-                                            animate={{ 
-                                              opacity: 1, 
-                                              scale: deviceTempSuccess[unit.id] ? [1, 1.2, 1] : 1,
-                                              backgroundColor: deviceTempSuccess[unit.id] ? "#10b981" : "#d1fae5",
-                                              color: deviceTempSuccess[unit.id] ? "#ffffff" : "#059669"
-                                            }}
-                                            exit={{ opacity: 0, scale: 0.8 }}
-                                            transition={{ duration: 0.3 }}
-                                            onClick={handleApplyTemp}
-                                            disabled={!unit.isOn}
-                                            className={`absolute right-0 p-0.5 rounded-full shadow-sm ${!unit.isOn ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                                            title={deviceTempSuccess[unit.id] ? "Applied!" : "Apply Temperature"}
-                                          >
-                                            <Check className="w-2.5 h-2.5" />
-                                          </motion.button>
-                                        )}
-                                      </AnimatePresence>
-                                    </div>
-                                    <button 
-                                      onClick={() => {
-                                        if (!unit.isOn) return;
-                                        const currentVal = parseInt(currentInputVal) || unit.targetTemp;
-                                        const newVal = Math.min(30, currentVal + 1);
-                                        setDeviceTempInputs(prev => ({ ...prev, [unit.id]: newVal.toString() }));
-                                        if (deviceTempSuccess[unit.id]) {
-                                          setDeviceTempSuccess(prev => ({ ...prev, [unit.id]: false }));
-                                        }
-                                      }}
-                                      disabled={!unit.isOn}
-                                      className={`w-7 h-7 flex items-center justify-center text-slate-500 hover:bg-white rounded-full transition-all font-black text-xs ${!unit.isOn ? 'cursor-not-allowed' : 'cursor-pointer active:scale-90'}`}
-                                    >
-                                      +
-                                    </button>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="py-2 px-4 sm:py-4 sm:px-6 text-center hidden sm:table-cell">
-                                <div className="flex justify-center">
+                                <span
+                                  className="font-extrabold text-slate-900 truncate cursor-default"
+                                  title={unit.name}
+                                >
+                                  {displayName}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-0.5 align-middle hidden sm:table-cell">
+                              <span className="block truncate text-slate-500 font-semibold" title={associatedVenue?.name || ''}>
+                                {associatedVenue?.name || '—'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-0.5 hidden sm:table-cell">
+                              <div className="flex justify-center">
+                                <div className={`flex items-center bg-slate-50 border border-slate-200 rounded-full p-0.5 ${!unit.isOn ? 'opacity-40 grayscale' : ''}`}>
                                   <button
-                                    onClick={() => onTogglePower(unit.id)}
-                                    className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${unit.isOn ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                                    type="button"
+                                    onClick={() => {
+                                      if (!unit.isOn) return;
+                                      const currentVal = parseInt(currentInputVal) || unit.targetTemp;
+                                      applyTemp(currentVal - 1);
+                                    }}
+                                    disabled={!unit.isOn}
+                                    className={`w-6 h-6 flex items-center justify-center text-slate-500 hover:bg-white rounded-full font-black text-xs ${!unit.isOn ? 'cursor-not-allowed' : 'cursor-pointer active:scale-90'}`}
                                   >
-                                    <span className={`absolute text-[9px] font-black text-white ${unit.isOn ? 'left-2' : 'right-2'}`}>
-                                      {unit.isOn ? 'ON' : 'OFF'}
-                                    </span>
-                                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${unit.isOn ? 'translate-x-8' : 'translate-x-1'}`} />
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="16"
+                                    max="30"
+                                    value={currentInputVal}
+                                    disabled={!unit.isOn}
+                                    onChange={(e) => {
+                                      let rawVal = e.target.value;
+                                      if (rawVal !== '') {
+                                        const val = parseInt(rawVal);
+                                        if (!isNaN(val)) {
+                                          if (val > 30) rawVal = '30';
+                                          else if (val < 16 && rawVal.length >= 2) rawVal = '16';
+                                        }
+                                      }
+                                      setDeviceTempInputs(prev => ({ ...prev, [unit.id]: rawVal }));
+                                    }}
+                                    onBlur={() => {
+                                      if (!unit.isOn) return;
+                                      let val = parseInt(currentInputVal);
+                                      if (isNaN(val) || val < 16) val = 16;
+                                      if (val > 30) val = 30;
+                                      applyTemp(val);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && unit.isOn) {
+                                        let val = parseInt(currentInputVal);
+                                        if (isNaN(val) || val < 16) val = 16;
+                                        if (val > 30) val = 30;
+                                        applyTemp(val);
+                                      }
+                                    }}
+                                    className={`w-8 text-center font-black text-xs text-slate-800 bg-transparent outline-none no-spin ${!unit.isOn ? 'cursor-not-allowed' : ''}`}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!unit.isOn) return;
+                                      const currentVal = parseInt(currentInputVal) || unit.targetTemp;
+                                      applyTemp(currentVal + 1);
+                                    }}
+                                    disabled={!unit.isOn}
+                                    className={`w-6 h-6 flex items-center justify-center text-slate-500 hover:bg-white rounded-full font-black text-xs ${!unit.isOn ? 'cursor-not-allowed' : 'cursor-pointer active:scale-90'}`}
+                                  >
+                                    +
                                   </button>
                                 </div>
-                              </td>
-                              <td className="py-2 px-4 sm:py-4 sm:px-6 hidden sm:table-cell">
-                                <div className="flex flex-col items-center">
-                                  <div className="flex items-center gap-1 text-xs font-black text-slate-800">
-                                    <Zap className="w-3.5 h-3.5 text-blue-500 fill-blue-500" />
-                                    {unit.hasEnergySensor !== false ? (
-                                      <span>{getACPowerDraw(unit).power} kW</span>
-                                    ) : (
-                                      <span className="text-slate-400 font-semibold italic text-[10px]">Offline</span>
-                                    )}
-                                  </div>
-                                  {unit.hasEnergySensor !== false && (
-                                    <span className="text-[10px] font-bold text-slate-400 mt-0.5">
-                                      {getACPowerDraw(unit).energyToday} kWh today
-                                    </span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-0.5 text-center hidden sm:table-cell">
+                              <div className="flex justify-center">
+                                <button
+                                  type="button"
+                                  onClick={() => onTogglePower(unit.id)}
+                                  className={`relative inline-flex h-6 w-12 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${unit.isOn ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                                >
+                                  <span className={`absolute text-[8px] font-black text-white ${unit.isOn ? 'left-1.5' : 'right-1.5'}`}>
+                                    {unit.isOn ? 'ON' : 'OFF'}
+                                  </span>
+                                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${unit.isOn ? 'translate-x-7' : 'translate-x-1'}`} />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="py-2 px-0.5 hidden md:table-cell">
+                              <div className="flex flex-col items-center min-w-0">
+                                <div className="flex items-center gap-0.5 text-[11px] font-black text-slate-800">
+                                  <Zap className="w-3 h-3 text-blue-500 fill-blue-500 shrink-0" />
+                                  {unit.hasEnergySensor !== false ? (
+                                    <span className="tabular-nums">{getACPowerDraw(unit).power}</span>
+                                  ) : (
+                                    <span className="text-slate-400 font-semibold italic text-[9px]">Off</span>
                                   )}
                                 </div>
-                              </td>
-                              <td className="py-2 px-4 sm:py-4 sm:px-6 hidden sm:table-cell">
-                                <div className="flex justify-center">
-                                  <div className="relative inline-block w-32">
-                                    <button 
-                                      onClick={() => setOpenDropdownId(openDropdownId === unit.id ? null : unit.id)}
-                                      disabled={!unit.isOn}
-                                      className={`flex items-center justify-between w-full bg-white border border-slate-200 text-slate-700 text-[11px] font-black rounded-xl p-2 shadow-sm transition-all ${!unit.isOn ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'hover:border-blue-300 cursor-pointer'}`}
+                                {unit.hasEnergySensor !== false && (
+                                  <span className="text-[9px] font-bold text-slate-400 truncate max-w-full">
+                                    {getACPowerDraw(unit).energyToday} today
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-2 px-0.5 hidden sm:table-cell">
+                              <div className="min-w-0 max-w-[8.5rem] mx-auto">
+                                <CustomDropdown
+                                  value={lockValue}
+                                  disabled={!unit.isOn}
+                                  placement="down"
+                                  onChange={(v) => {
+                                    if (v === 'Unlocked') {
+                                      onUpdateDevice(unit.id, { isLocked: false, eventLocked: false });
+                                    } else if (v === 'Locked') {
+                                      onUpdateDevice(unit.id, { isLocked: true, eventLocked: false });
+                                    } else if (v === 'Super Locked') {
+                                      onUpdateDevice(unit.id, { isLocked: true, eventLocked: true });
+                                    }
+                                  }}
+                                  options={[
+                                    { value: 'Unlocked', label: 'Unlock' },
+                                    { value: 'Locked', label: 'Lock' },
+                                    { value: 'Super Locked', label: 'Super Lock' },
+                                  ]}
+                                  triggerClassName="!py-1.5 !pl-2.5 !pr-2 !rounded-xl !text-[10px]"
+                                />
+                              </div>
+                            </td>
+                            <td className="py-2 px-0.5 text-center hidden sm:table-cell">
+                              <div className="flex justify-center">
+                                {unit.hasFault ? (
+                                  <span
+                                    className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-50 text-amber-600 border border-amber-200/60"
+                                    title="Faulty"
+                                  >
+                                    <AlertTriangle className="w-3.5 h-3.5" />
+                                  </span>
+                                ) : (
+                                  <span
+                                    className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-emerald-50 text-emerald-500 border border-emerald-200/60"
+                                    title="Healthy"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-2 px-0.5 text-center hidden md:table-cell">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedDeviceId(isExpanded ? null : unit.id)}
+                                className={`px-2 py-1 rounded-lg transition-all text-[11px] font-black inline-flex items-center gap-0.5 cursor-pointer tabular-nums ${
+                                  isExpanded ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                                title="Events"
+                              >
+                                {unit.events?.length || 0}
+                                <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                              </button>
+                            </td>
+                            <td className="py-2 pl-0 pr-5 text-right align-middle">
+                              <div className="flex justify-end gap-0.5">
+                                <button type="button" onClick={() => setEditingDevice(unit)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer" title="Edit Device">
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                                <button type="button" onClick={() => { setDeletingId(unit.id); setDeleteType('device'); }} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer" title="Delete Device">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {isExpanded && (
+                            <tr className="bg-slate-50/40">
+                              <td colSpan={9} className="px-3 py-3 border-b border-slate-100">
+                                <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-inner">
+                                  <div className="flex justify-between items-center mb-3 gap-2">
+                                    <h5 className="font-extrabold text-slate-800 text-[11px] uppercase tracking-wider flex items-center gap-2 min-w-0">
+                                      <Clock className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                      <span className="truncate">Schedules ({unit.events?.length || 0})</span>
+                                    </h5>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEventDeviceId(unit.id);
+                                        setShowAddEventModal(true);
+                                      }}
+                                      className="text-[10px] font-black text-blue-600 hover:text-blue-700 flex items-center gap-1 bg-blue-50 px-2 py-1.5 rounded-lg hover:bg-blue-100 transition-all cursor-pointer shrink-0"
                                     >
-                                      <span className="flex items-center gap-1.5">
-                                        {unit.isLocked ? <Lock className="w-3.5 h-3.5 text-red-500" /> : <Unlock className="w-3.5 h-3.5 text-emerald-500" />}
-                                        {unit.isLocked ? 'Locked' : 'Unlocked'}
-                                      </span>
-                                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                                      <Plus className="w-3 h-3 stroke-[2.5]" /> Add Event
                                     </button>
-                                    
-                                    <AnimatePresence>
-                                      {openDropdownId === unit.id && unit.isOn && (
-                                        <motion.div 
-                                          initial={{ opacity: 0, y: -10 }}
-                                          animate={{ opacity: 1, y: 0 }}
-                                          exit={{ opacity: 0, y: -10 }}
-                                          className="absolute top-full left-0 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg z-20 overflow-hidden"
-                                        >
-                                          <button
-                                            onClick={() => { onUpdateDevice(unit.id, { isLocked: false }); setOpenDropdownId(null); }}
-                                            className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
-                                          >
-                                            <Unlock className="w-3.5 h-3.5 text-emerald-500" /> Unlocked
-                                          </button>
-                                          <button
-                                            onClick={() => { onUpdateDevice(unit.id, { isLocked: true }); setOpenDropdownId(null); }}
-                                            className="flex items-center gap-2 w-full text-left px-3 py-2 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
-                                          >
-                                            <Lock className="w-3.5 h-3.5 text-red-500" /> Locked
-                                          </button>
-                                        </motion.div>
-                                      )}
-                                    </AnimatePresence>
                                   </div>
-                                </div>
-                              </td>
-                              <td className="py-2 px-4 sm:py-4 sm:px-6 text-center hidden sm:table-cell">
-                                <div className="flex justify-center">
-                                  {unit.hasFault ? (
-                                    <div className="flex items-center gap-1.5 text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200/50" title="Faulty - Control Active">
-                                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                                      <span className="text-[10px] font-black uppercase">Faulty</span>
+                                  {unit.events && unit.events.length > 0 ? (
+                                    <div className="space-y-2">
+                                      {unit.events.map(event => (
+                                        <div key={event.id} className="bg-slate-50/50 p-3 rounded-xl border border-slate-100/70 flex justify-between items-center gap-3">
+                                          <div className="min-w-0">
+                                            <p className="font-bold text-slate-800 text-xs truncate">{event.name || 'Event'} - {event.time}</p>
+                                            <p className="text-[10px] text-slate-400 mt-0.5 font-semibold truncate">
+                                              {event.isRecurring
+                                                ? event.days.join(', ')
+                                                : `${event.startDate || ''} to ${event.endDate || ''}`}
+                                            </p>
+                                          </div>
+                                          <div className="flex items-center gap-3 shrink-0">
+                                            <span className={`px-2 py-1 rounded-full text-[9px] font-black tracking-wider uppercase ${
+                                              event.action === 'ON' ? 'bg-emerald-100 text-emerald-700' :
+                                              event.action === 'OFF' ? 'bg-slate-200 text-slate-700' :
+                                              'bg-blue-100 text-blue-700'
+                                            }`}>
+                                              {event.action} {event.targetTemp ? `${event.targetTemp}°C` : ''}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                onUpdateDevice(unit.id, {
+                                                  events: unit.events.map(e => e.id === event.id ? { ...e, enabled: !e.enabled } : e)
+                                                });
+                                              }}
+                                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${event.enabled ? 'bg-blue-500' : 'bg-slate-300'}`}
+                                            >
+                                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${event.enabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
                                   ) : (
-                                    <div className="flex items-center gap-1.5 text-emerald-500 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/50" title="Healthy">
-                                      <CheckCircle2 className="w-3.5 h-3.5" />
-                                      <span className="text-[10px] font-black uppercase">Healthy</span>
-                                    </div>
+                                    <p className="text-xs text-slate-400 italic bg-slate-50/50 p-3 rounded-xl border border-slate-100/50 text-center font-semibold">No schedules configured.</p>
                                   )}
-                                </div>
-                              </td>
-                              <td className="py-2 px-4 sm:py-4 sm:px-6 text-center hidden sm:table-cell">
-                                <div className="flex justify-center">
-                                  <button 
-                                    onClick={() => setExpandedDeviceId(isExpanded ? null : unit.id)}
-                                    className={`px-2.5 py-1 rounded-lg transition-all text-xs font-black inline-flex items-center gap-1 cursor-pointer ${isExpanded ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                  >
-                                    <span>{unit.events?.length || 0}</span>
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Events</span>
-                                    <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
-                                  </button>
-                                </div>
-                              </td>
-                              <td className="py-2 px-4 sm:py-4 sm:px-6 text-right">
-                                <div className="flex justify-end gap-1 sm:gap-1.5">
-                                  <button onClick={() => setEditingDevice(unit)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer" title="Edit Device">
-                                    <Edit className="w-4 h-4" />
-                                  </button>
-                                  <button onClick={() => { setDeletingId(unit.id); setDeleteType('device'); }} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer" title="Delete Device">
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
                                 </div>
                               </td>
                             </tr>
-
-                            {/* Expanded Events Area */}
-                            {isExpanded && (
-                              <tr className="bg-slate-50/40">
-                                <td colSpan={9} className="px-6 py-4 border-b border-slate-100">
-                                  <div className="max-w-4xl mx-auto bg-white border border-slate-100 rounded-2xl p-5 shadow-inner">
-                                    <div className="flex justify-between items-center mb-4">
-                                      <h5 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-2">
-                                        <Clock className="w-4 h-4 text-blue-500" />
-                                        Scheduled Climatic Events ({unit.events?.length || 0})
-                                      </h5>
-                                      <button 
-                                        onClick={() => {
-                                          setEventDeviceId(unit.id);
-                                          setShowAddEventModal(true);
-                                        }}
-                                        className="text-xs font-black text-blue-600 hover:text-blue-700 flex items-center gap-1 bg-blue-50 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 transition-all cursor-pointer"
-                                      >
-                                        <Plus className="w-3.5 h-3.5 stroke-[2.5]" /> Add Event
-                                      </button>
-                                    </div>
-                                    {unit.events && unit.events.length > 0 ? (
-                                      <div className="space-y-2">
-                                        {unit.events.map(event => (
-                                          <div key={event.id} className="bg-slate-50/50 p-3.5 rounded-xl border border-slate-100/70 flex justify-between items-center">
-                                            <div>
-                                              <p className="font-bold text-slate-800 text-xs">{event.name || 'Event'} - {event.time}</p>
-                                              <p className="text-[10px] text-slate-400 mt-0.5 font-semibold">
-                                                {event.isRecurring 
-                                                  ? event.days.join(', ') 
-                                                  : `${event.startDate || ''} to ${event.endDate || ''}`}
-                                              </p>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-black tracking-wider uppercase ${
-                                                event.action === 'ON' ? 'bg-emerald-100 text-emerald-700' :
-                                                event.action === 'OFF' ? 'bg-slate-200 text-slate-700' :
-                                                'bg-blue-100 text-blue-700'
-                                              }`}>
-                                                {event.action} {event.targetTemp ? `${event.targetTemp}°C` : ''}
-                                              </span>
-                                              <button 
-                                                onClick={() => {
-                                                  onUpdateDevice(unit.id, {
-                                                    events: unit.events.map(e => e.id === event.id ? { ...e, enabled: !e.enabled } : e)
-                                                  });
-                                                }}
-                                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${event.enabled ? 'bg-blue-500' : 'bg-slate-300'}`}
-                                              >
-                                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${event.enabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
-                                              </button>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <p className="text-xs text-slate-400 italic bg-slate-50/50 p-4 rounded-xl border border-slate-100/50 text-center font-semibold">No automated schedules configured for this device.</p>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })}
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1607,23 +2049,15 @@ export function ManagerView({
                   <option value="inactive">Inactive</option>
                 </select>
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="block text-sm font-medium text-slate-700 mb-2">Assign Venues</label>
-                <div className="flex flex-wrap gap-2">
-                  {venues.map((v) => (
-                    <button
-                      key={v.id}
-                      onClick={() => toggleVenue(v.id)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                        newUserVenues.includes(v.id)
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      {v.name}
-                    </button>
-                  ))}
-                </div>
+                <MultiSelectDropdown
+                  values={newUserVenues}
+                  onChange={setNewUserVenues}
+                  icon={MapPin}
+                  placeholder="Select venues…"
+                  options={venues.map((v) => ({ value: v.id, label: v.name }))}
+                />
               </div>
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                 <button
@@ -1757,7 +2191,7 @@ export function ManagerView({
 
       <Modal
         isOpen={showAddDevice}
-        onClose={setShowAddDevice}
+        onClose={() => setShowAddDevice(false)}
         title="Add Device"
       >
         <div className="space-y-4">
@@ -1897,28 +2331,15 @@ export function ManagerView({
                 ]}
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-sm font-medium text-slate-700 mb-2">Assigned Venues</label>
-              <div className="flex flex-wrap gap-2">
-                {venues.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => {
-                      const newIds = editingUser.assignedVenueIds.includes(v.id)
-                        ? editingUser.assignedVenueIds.filter(id => id !== v.id)
-                        : [...editingUser.assignedVenueIds, v.id];
-                      setEditingUser({ ...editingUser, assignedVenueIds: newIds });
-                    }}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                      editingUser.assignedVenueIds.includes(v.id)
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {v.name}
-                  </button>
-                ))}
-              </div>
+              <MultiSelectDropdown
+                values={editingUser.assignedVenueIds}
+                onChange={(ids) => setEditingUser({ ...editingUser, assignedVenueIds: ids })}
+                icon={MapPin}
+                placeholder="Select venues…"
+                options={venues.map((v) => ({ value: v.id, label: v.name }))}
+              />
             </div>
             <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
               <button
