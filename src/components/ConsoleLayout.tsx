@@ -11,7 +11,6 @@ import {
   Menu, 
   User, 
   LogOut, 
-  Home, 
   Building2, 
   MapPin, 
   MonitorSmartphone, 
@@ -19,7 +18,8 @@ import {
   Activity, 
   ShieldAlert,
   BarChart3,
-  Cpu
+  Cpu,
+  LayoutDashboard
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAppContext } from '../context/AppContext';
@@ -97,15 +97,15 @@ export function ConsoleLayout() {
   }
 
   const managerTabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'organizations', label: 'Organization', icon: Building2 },
-    { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
     { id: 'venues', label: 'Venues', icon: MapPin },
+    { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
     { id: 'users', label: 'Users', icon: Users }
   ];
 
   const userTabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
     { id: 'reports', label: 'Reports', icon: Activity }
   ];

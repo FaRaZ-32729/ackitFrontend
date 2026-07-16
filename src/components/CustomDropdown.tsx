@@ -18,6 +18,12 @@ interface CustomDropdownProps {
   /** How many options stay visible before the list scrolls (mobile-friendly default: 3). */
   visibleCount?: number;
   className?: string;
+  /** Extra classes for the trigger button (overrides / extends default chrome). */
+  triggerClassName?: string;
+  /** Custom trigger button content. When set, replaces the default label + icon row. */
+  triggerContent?: React.ReactNode;
+  /** Panel open direction. Default `auto` flips up if there isn’t room below. */
+  placement?: 'auto' | 'down' | 'up';
   /**
    * When true, custom UI shows below `lg` only; at `lg+` a native `<select>` is used
    * so desktop modals/screens keep their original look.
@@ -42,6 +48,9 @@ export function CustomDropdown({
   disabled = false,
   visibleCount = 3,
   className = '',
+  triggerClassName = '',
+  triggerContent,
+  placement = 'auto',
   desktopNative = false,
   nativeClassName = 'w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none',
 }: CustomDropdownProps) {
@@ -64,7 +73,14 @@ export function CustomDropdown({
     const r = el.getBoundingClientRect();
     const estimatedMax = Math.min(visibleCount * 44, window.innerHeight * 0.4);
     const spaceBelow = window.innerHeight - r.bottom;
-    const openUp = spaceBelow < estimatedMax + 12 && r.top > spaceBelow;
+    let openUp = false;
+    if (placement === 'up') {
+      openUp = true;
+    } else if (placement === 'down') {
+      openUp = false;
+    } else {
+      openUp = spaceBelow < estimatedMax + 12 && r.top > spaceBelow;
+    }
     setPanelRect({
       top: openUp ? r.top - 8 : r.bottom + 8,
       left: r.left,
@@ -85,7 +101,7 @@ export function CustomDropdown({
       window.removeEventListener('resize', updatePanelRect);
       window.removeEventListener('scroll', updatePanelRect, true);
     };
-  }, [open, visibleCount]);
+  }, [open, visibleCount, placement]);
 
   useEffect(() => {
     if (!open) return;
@@ -112,32 +128,46 @@ export function CustomDropdown({
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => !disabled && setOpen((v) => !v)}
-        className={`
-          w-full min-w-0 flex items-center gap-2
-          bg-slate-50/50 text-slate-800 text-xs font-bold
-          pl-4 pr-3 py-3 rounded-2xl
-          border border-slate-200/50 shadow-inner
-          focus:outline-none focus:border-blue-500 focus:bg-white
-          transition-all
-          ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-          ${open ? 'border-blue-500 bg-white' : ''}
-        `}
+        className={
+          triggerContent
+            ? `
+              w-full min-w-0 flex
+              focus:outline-none transition-all
+              ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+              ${triggerClassName}
+            `
+            : `
+              w-full min-w-0 flex items-center gap-2
+              bg-slate-50/50 text-slate-800 text-xs font-bold
+              pl-4 pr-3 py-3 rounded-2xl
+              border border-slate-200/50 shadow-inner
+              focus:outline-none focus:border-blue-500 focus:bg-white
+              transition-all
+              ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+              ${open ? 'border-blue-500 bg-white' : ''}
+              ${triggerClassName}
+            `
+        }
       >
-        <span
-          className={`flex-1 min-w-0 truncate text-left ${
-            selected ? 'text-slate-800' : 'text-slate-400'
-          }`}
-        >
-          {displayLabel}
-        </span>
-        <span className="flex items-center gap-1.5 shrink-0 text-slate-400">
-          {Icon && <Icon className="w-4 h-4" />}
-          <ChevronDown
-            className={`w-4 h-4 transition-transform duration-200 ${
-              open ? 'rotate-180 text-blue-500' : ''
-            }`}
-          />
-        </span>
+        {triggerContent ?? (
+          <>
+            <span
+              className={`flex-1 min-w-0 truncate text-left ${
+                selected ? 'text-slate-800' : 'text-slate-400'
+              }`}
+            >
+              {displayLabel}
+            </span>
+            <span className="flex items-center gap-1.5 shrink-0 text-slate-400">
+              {Icon && <Icon className="w-4 h-4" />}
+              <ChevronDown
+                className={`w-4 h-4 transition-transform duration-200 ${
+                  open ? 'rotate-180 text-blue-500' : ''
+                }`}
+              />
+            </span>
+          </>
+        )}
       </button>
     </div>
   );
@@ -163,7 +193,7 @@ export function CustomDropdown({
           "
           style={{
             left: panelRect.left,
-            width: panelRect.width,
+            width: Math.max(panelRect.width, 140),
             ...(panelRect.openUp
               ? { bottom: window.innerHeight - panelRect.top }
               : { top: panelRect.top }),

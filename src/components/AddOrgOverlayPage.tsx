@@ -95,9 +95,10 @@ export function AddOrgOverlayPage({ onClose }: AddOrgOverlayPageProps) {
         /* FORM ENTRY SCREEN */
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
           
-          {/* Scrollable Fields Wrapper */}
-          <div className="flex-1 overflow-y-auto min-h-0 pr-1 pb-2 scrollbar-thin">
-            <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm space-y-5">
+          {/* Centered form card — extra top/bottom space when form is small */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="min-h-full flex flex-col justify-center py-4 pr-1">
+              <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm space-y-5 w-full shrink-0">
               
               {/* Error Callout */}
               {error && (
@@ -145,6 +146,7 @@ export function AddOrgOverlayPage({ onClose }: AddOrgOverlayPageProps) {
                 </div>
               </div>
 
+              </div>
             </div>
           </div>
 

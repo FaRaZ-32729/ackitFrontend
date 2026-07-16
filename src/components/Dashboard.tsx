@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { ACUnit, Role, Organization, Venue, ACEvent } from '../types';
 import { useAppContext } from '../context/AppContext';
 import { 
@@ -32,6 +32,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Modal } from './Modal';
 import { ACKitLogo } from './ACKitLogo';
+import { CustomDropdown } from './CustomDropdown';
 
 interface DashboardProps {
   units: ACUnit[];
@@ -93,7 +94,8 @@ export function Dashboard({
   
   // Layout density mode: 'standard' or 'dense'
   const [gridDensity, setGridDensity] = useState<'standard' | 'dense'>('standard');
-  const [showMobileLockDropdown, setShowMobileLockDropdown] = useState(false);
+  const mobileArcSvgRef = useRef<SVGSVGElement>(null);
+  const isDraggingMobileArc = useRef(false);
 
   // 5. Active Organization Header (usually 'org-1' which maps to SSUET_AS)
   const activeOrg = orgs[0] || { name: 'SSUET_AS' };
@@ -167,6 +169,72 @@ export function Dashboard({
         onUpdateDevice(u.id, { targetTemp: nextTarget });
       }
     });
+  };
+
+  const handleBulkTempSet = (temp: number) => {
+    const clamped = Math.max(16, Math.min(31, Math.round(temp)));
+    selectedUnits.forEach(u => {
+      if (onUpdateDevice) {
+        onUpdateDevice(u.id, { targetTemp: clamped });
+      }
+    });
+  };
+
+  const tempFromMobileArcPoint = (clientX: number, clientY: number): number | null => {
+    const svg = mobileArcSvgRef.current;
+    if (!svg) return null;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return null;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const local = pt.matrixTransform(ctm.inverse());
+    const dx = local.x - 110;
+    const dy = local.y - 110;
+    let deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+    if (deg < 0) deg += 360;
+
+    // Arc runs 140° → 400° (wraps past 360 to 40°)
+    let progress: number;
+    if (deg >= 140) {
+      progress = (deg - 140) / 260;
+    } else if (deg <= 40) {
+      progress = (deg + 220) / 260;
+    } else {
+      // Bottom gap outside the arc — snap to nearest end
+      progress = deg < 90 ? 1 : 0;
+    }
+    progress = Math.max(0, Math.min(1, progress));
+    return Math.round(16 + progress * (31 - 16));
+  };
+
+  const isMobilePowerOn = selectedUnits.length > 0 && selectedUnits.every(u => u.isOn);
+
+  const handleMobileArcPointerDown = (e: React.PointerEvent) => {
+    if (!isMobilePowerOn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingMobileArc.current = true;
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    const next = tempFromMobileArcPoint(e.clientX, e.clientY);
+    if (next != null) handleBulkTempSet(next);
+  };
+
+  const handleMobileArcPointerMove = (e: React.PointerEvent) => {
+    if (!isDraggingMobileArc.current || !isMobilePowerOn) return;
+    e.preventDefault();
+    const next = tempFromMobileArcPoint(e.clientX, e.clientY);
+    if (next != null) handleBulkTempSet(next);
+  };
+
+  const handleMobileArcPointerUp = (e: React.PointerEvent) => {
+    if (!isDraggingMobileArc.current) return;
+    isDraggingMobileArc.current = false;
+    try {
+      (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
   };
 
   const handleBulkLockChange = (status: 'Unlocked' | 'Locked' | 'Super Locked') => {
@@ -1596,6 +1664,8 @@ export function Dashboard({
         const cy = 110 + 92 * Math.sin(angleRad);
         
         const allUnitsOn = selectedUnits.every(u => u.isOn) && selectedUnits.length > 0;
+        const arcActiveColor = allUnitsOn ? '#4f46e5' : '#94a3b8';
+        const handleArrow = allUnitsOn ? '#4f46e5' : '#94a3b8';
 
         return (
           <div className="flex lg:hidden flex-col h-full w-full bg-[#f3f4f6] text-slate-800 select-none overflow-hidden justify-between p-4 pb-1">
@@ -1646,68 +1716,45 @@ export function Dashboard({
                 <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tight mt-0.5 block">Fault Devices</span>
               </div>
 
-              {/* Card 3: Lock Status Dropdown */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowMobileLockDropdown(!showMobileLockDropdown)}
-                  className="w-full h-full bg-blue-600 hover:bg-blue-700 text-white rounded-2xl p-3 flex flex-col justify-between items-start border border-blue-500/10 shadow-sm transition-colors text-left"
-                >
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-[9px] font-black uppercase text-blue-100 tracking-wider">Lock State</span>
-                    <ChevronDown className="w-3 h-3 text-blue-200" />
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-2">
-                    {lockState === 'Unlocked' ? (
-                      <Unlock className="w-4 h-4 text-yellow-300 shrink-0" />
-                    ) : (
-                      <Lock className="w-4 h-4 text-white shrink-0" />
-                    )}
-                    <span className="text-[11px] font-black tracking-tight truncate leading-none">{lockState}</span>
-                  </div>
-                </button>
-
-                {/* Mobile Lock Dropdown Popover */}
-                {showMobileLockDropdown && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-40 bg-transparent" 
-                      onClick={() => setShowMobileLockDropdown(false)}
-                    />
-                    <div className="absolute right-0 bottom-full mb-2 w-36 bg-white rounded-xl shadow-xl border border-slate-100 py-1.5 z-50 text-slate-800 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleBulkLockChange('Unlocked');
-                          setShowMobileLockDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 font-black text-slate-700 flex items-center gap-1.5"
-                      >
-                        <Unlock className="w-3.5 h-3.5 text-slate-400" /> Unlocked
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleBulkLockChange('Locked');
-                          setShowMobileLockDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 font-black text-slate-700 flex items-center gap-1.5"
-                      >
-                        <Lock className="w-3.5 h-3.5 text-slate-400" /> Locked
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleBulkLockChange('Super Locked');
-                          setShowMobileLockDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 font-black text-slate-700 flex items-center gap-1.5"
-                      >
-                        <Lock className="w-3.5 h-3.5 text-blue-600" /> Super Locked
-                      </button>
-                    </div>
-                  </>
-                )}
+              {/* Card 3: Lock State — custom dropdown (opens downward) */}
+              <div className="min-w-0 h-full">
+                <CustomDropdown
+                  placement="down"
+                  value={lockState === 'Mixed' ? '' : lockState}
+                  placeholder="Mixed"
+                  onChange={(v) => {
+                    if (v === 'Unlocked' || v === 'Locked' || v === 'Super Locked') {
+                      handleBulkLockChange(v);
+                    }
+                  }}
+                  options={[
+                    { value: 'Unlocked', label: 'Unlock' },
+                    { value: 'Locked', label: 'Lock' },
+                    { value: 'Super Locked', label: 'Super Lock' },
+                  ]}
+                  className="h-full"
+                  triggerClassName="h-full bg-blue-600 hover:bg-blue-700 text-white rounded-2xl p-3 flex-col justify-between items-stretch border border-blue-500/10 shadow-sm text-left"
+                  triggerContent={
+                    <>
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-[9px] font-black uppercase text-blue-100 tracking-wider">
+                          Lock State
+                        </span>
+                        <ChevronDown className="w-3 h-3 text-blue-200 shrink-0" />
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-2 min-w-0">
+                        {lockState === 'Unlocked' ? (
+                          <Unlock className="w-4 h-4 text-yellow-300 shrink-0" />
+                        ) : (
+                          <Lock className="w-4 h-4 text-white shrink-0" />
+                        )}
+                        <span className="text-[11px] font-black tracking-tight truncate leading-none text-white">
+                          {lockState}
+                        </span>
+                      </div>
+                    </>
+                  }
+                />
               </div>
 
             </div>
@@ -1717,7 +1764,11 @@ export function Dashboard({
               <div className="relative w-full max-w-[240px] aspect-square flex items-center justify-center">
                 
                 {/* SVG Temperature Arc Semicircle */}
-                <svg viewBox="0 0 220 220" className="w-full h-full select-none overflow-visible">
+                <svg
+                  ref={mobileArcSvgRef}
+                  viewBox="0 0 220 220"
+                  className="w-full h-full select-none overflow-visible touch-none"
+                >
                   {/* Background Track */}
                   <path 
                     d="M 39.5 169.1 A 92 92 0 1 1 180.5 169.1" 
@@ -1726,29 +1777,56 @@ export function Dashboard({
                     strokeLinecap="round" 
                     fill="none" 
                   />
-                  {/* Active Fill Gradient Arc */}
+                  {/* Active Fill Arc — blue when ON, gray when OFF */}
                   <path 
                     d="M 39.5 169.1 A 92 92 0 1 1 180.5 169.1" 
-                    stroke="#4f46e5" 
+                    stroke={arcActiveColor}
                     strokeWidth="8.5" 
                     strokeLinecap="round" 
                     strokeDasharray="417.5"
                     strokeDashoffset={417.5 - (417.5 * (tempValue - 16) / (31 - 16))}
                     fill="none" 
+                    className="transition-colors duration-300"
                   />
                   
-                  {/* Handle knob at end of active arc with arrows (matching Figma exactly) */}
-                  <g transform={`translate(${cx}, ${cy})`} className="shadow-md">
+                  {/* Hit area along arc for easier dragging */}
+                  <path 
+                    d="M 39.5 169.1 A 92 92 0 1 1 180.5 169.1" 
+                    stroke="transparent"
+                    strokeWidth="28" 
+                    strokeLinecap="round" 
+                    fill="none"
+                    style={{ cursor: allUnitsOn ? 'grab' : 'not-allowed', touchAction: 'none' }}
+                    onPointerDown={handleMobileArcPointerDown}
+                    onPointerMove={handleMobileArcPointerMove}
+                    onPointerUp={handleMobileArcPointerUp}
+                    onPointerCancel={handleMobileArcPointerUp}
+                  />
+
+                  {/* Handle knob — draggable when ON */}
+                  <g
+                    transform={`translate(${cx}, ${cy})`}
+                    style={{ cursor: allUnitsOn ? 'grab' : 'not-allowed', touchAction: 'none' }}
+                    onPointerDown={handleMobileArcPointerDown}
+                    onPointerMove={handleMobileArcPointerMove}
+                    onPointerUp={handleMobileArcPointerUp}
+                    onPointerCancel={handleMobileArcPointerUp}
+                  >
+                    <circle 
+                      r="16" 
+                      fill="transparent"
+                    />
                     <circle 
                       r="13" 
-                      fill="#e2e8f0" 
+                      fill="#e2e8f0"
                       stroke="#ffffff" 
                       strokeWidth="2.5" 
+                      className="transition-colors duration-300"
                     />
                     {/* Left triangle */}
-                    <path d="M -2.5 -3.5 L -6.5 0 L -2.5 3.5 Z" fill="#4f46e5" />
+                    <path d="M -2.5 -3.5 L -6.5 0 L -2.5 3.5 Z" fill={handleArrow} className="transition-colors duration-300" />
                     {/* Right triangle */}
-                    <path d="M 2.5 -3.5 L 6.5 0 L 2.5 3.5 Z" fill="#4f46e5" />
+                    <path d="M 2.5 -3.5 L 6.5 0 L 2.5 3.5 Z" fill={handleArrow} className="transition-colors duration-300" />
                   </g>
 
                   {/* Arc Limit Labels */}
@@ -1757,15 +1835,23 @@ export function Dashboard({
                 </svg>
 
                 {/* Inner Content Controller - perfectly fits inside the arc */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center -mt-1">
+                <div className="absolute inset-0 flex flex-col items-center justify-center -mt-1 pointer-events-none">
                   <span className="text-[10px] font-bold uppercase text-slate-400 tracking-[0.25em] mb-1">COOL</span>
                   
-                  <div className="flex items-center justify-center gap-3 my-0.5">
+                  <div className="flex items-center justify-center gap-3 my-0.5 pointer-events-auto">
                     {/* Minus Button */}
                     <button 
                       type="button" 
-                      onClick={() => handleBulkTempAdjust(-1)}
-                      className="w-9 h-9 rounded-full bg-[#f1f3f5] hover:bg-slate-200 active:bg-slate-300 text-slate-900 font-light flex items-center justify-center transition-all text-lg shadow-sm border border-slate-200/10 shrink-0 select-none active:scale-90"
+                      disabled={!allUnitsOn}
+                      onClick={() => {
+                        if (!allUnitsOn) return;
+                        handleBulkTempAdjust(-1);
+                      }}
+                      className={`w-9 h-9 rounded-full bg-[#f1f3f5] text-slate-900 font-light flex items-center justify-center transition-all text-lg shadow-sm border border-slate-200/10 shrink-0 select-none ${
+                        allUnitsOn
+                          ? 'hover:bg-slate-200 active:bg-slate-300 active:scale-90'
+                          : 'opacity-40 cursor-not-allowed'
+                      }`}
                     >
                       -
                     </button>
@@ -1782,8 +1868,16 @@ export function Dashboard({
                     {/* Plus Button */}
                     <button 
                       type="button" 
-                      onClick={() => handleBulkTempAdjust(1)}
-                      className="w-9 h-9 rounded-full bg-[#f1f3f5] hover:bg-[#eaecef] active:bg-slate-300 text-slate-900 font-light flex items-center justify-center transition-all text-lg shadow-sm border border-slate-200/10 shrink-0 select-none active:scale-90"
+                      disabled={!allUnitsOn}
+                      onClick={() => {
+                        if (!allUnitsOn) return;
+                        handleBulkTempAdjust(1);
+                      }}
+                      className={`w-9 h-9 rounded-full bg-[#f1f3f5] text-slate-900 font-light flex items-center justify-center transition-all text-lg shadow-sm border border-slate-200/10 shrink-0 select-none ${
+                        allUnitsOn
+                          ? 'hover:bg-[#eaecef] active:bg-slate-300 active:scale-90'
+                          : 'opacity-40 cursor-not-allowed'
+                      }`}
                     >
                       +
                     </button>
@@ -1795,12 +1889,18 @@ export function Dashboard({
                   
                   <button 
                     type="button"
+                    disabled={!allUnitsOn}
                     onClick={() => {
+                      if (!allUnitsOn) return;
                       selectedUnits.forEach(u => {
                         if (onUpdateDevice) onUpdateDevice(u.id, { targetTemp: 24 });
                       });
                     }}
-                    className="mt-3 px-5 py-2 bg-[#e0e5f8] hover:bg-indigo-100 text-[#4f46e5] rounded-full text-[12px] font-semibold tracking-wide transition-colors"
+                    className={`mt-3 px-5 py-2 rounded-full text-[12px] font-semibold tracking-wide transition-colors pointer-events-auto ${
+                      allUnitsOn
+                        ? 'bg-[#e0e5f8] hover:bg-indigo-100 text-[#4f46e5]'
+                        : 'bg-slate-200 text-slate-400 opacity-60 cursor-not-allowed'
+                    }`}
                   >
                     Auto Adjust
                   </button>
