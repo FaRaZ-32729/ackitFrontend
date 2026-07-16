@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { User, Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, CheckCircle2, Shield, Users } from 'lucide-react';
-import { ACKitLogo } from '../components/ACKitLogo';
+import { ACKitLogo } from '../components/ui/ACKitLogo';
 import { useAppContext } from '../context/AppContext';
 
 export function RegisterPage() {

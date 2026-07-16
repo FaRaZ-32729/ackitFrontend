@@ -1,7 +1,29 @@
 import React from 'react';
 import { Navigate, useParams, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/AppContext';
-import { UserView } from '../../components/UserView';
+import { UserLayout } from '../UserLayout';
+import { UserDashboardPage } from './UserDashboardPage';
+import { UserReportsPage } from './UserReportsPage';
+import { UserDevicesPage } from './UserDevicesPage';
+import { UserAcBrandsPage } from './UserAcBrandsPage';
+
+const VALID_TABS = ['dashboard', 'reports', 'devices', 'ac-brands'] as const;
+type UserTab = (typeof VALID_TABS)[number];
+
+function UserTabContent({ tab }: { tab: UserTab }) {
+  switch (tab) {
+    case 'dashboard':
+      return <UserDashboardPage />;
+    case 'reports':
+      return <UserReportsPage />;
+    case 'devices':
+      return <UserDevicesPage />;
+    case 'ac-brands':
+      return <UserAcBrandsPage />;
+    default:
+      return null;
+  }
+}
 
 export function UserPage() {
   const {
@@ -18,22 +40,19 @@ export function UserPage() {
   const navigate = useNavigate();
   const { tab } = useParams<{ tab: string }>();
 
-  // Route protection
   if (role !== 'user') {
     return <Navigate to="/login" replace />;
   }
 
-  const validTabs = ['dashboard', 'reports', 'devices'];
-  const currentTab = tab && validTabs.includes(tab) ? tab : 'dashboard';
-
-  // If no tab is specified in the URL, redirect to default
-  if (!tab || !validTabs.includes(tab)) {
+  if (!tab || !(VALID_TABS as readonly string[]).includes(tab)) {
     return <Navigate to="/user/dashboard" replace />;
   }
 
+  const currentTab = tab as UserTab;
+
   return (
-    <UserView
-      user={users[0]} // Mocking logged-in user
+    <UserLayout
+      user={users[0]}
       units={units}
       orgs={orgs}
       venues={venues}
@@ -46,7 +65,11 @@ export function UserPage() {
       onTogglePower={handleTogglePower}
       onAddDevice={(d) => setUnits((prev) => [...prev, { id: d.id || `ac-${Date.now()}`, ...d }])}
       onDeleteDevice={(id) => setUnits((prev) => prev.filter((u) => u.id !== id))}
-      onUpdateDevice={(id, data) => setUnits((prev) => prev.map((u) => (u.id === id ? { ...u, ...data } : u)))}
-    />
+      onUpdateDevice={(id, data) =>
+        setUnits((prev) => prev.map((u) => (u.id === id ? { ...u, ...data } : u)))
+      }
+    >
+      <UserTabContent tab={currentTab} />
+    </UserLayout>
   );
 }

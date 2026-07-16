@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Home, ArrowLeft, ShieldAlert } from 'lucide-react';
-import { ACKitLogo } from '../components/ACKitLogo';
+import { ACKitLogo } from '../components/ui/ACKitLogo';
 
 export function NotFoundPage() {
   return (

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { ACDetail } from '../components/ACDetail';
+import { ACDetail } from '../components/devices/ACDetail';
 
 export function DevicePage() {
   const {

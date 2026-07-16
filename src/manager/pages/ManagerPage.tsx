@@ -1,7 +1,51 @@
 import React from 'react';
 import { Navigate, useParams, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/AppContext';
-import { ManagerView } from '../../components/ManagerView';
+import { ManagerLayout } from '../ManagerLayout';
+import { OverviewPage } from './OverviewPage';
+import { DashboardPage } from './DashboardPage';
+import { ReportsPage } from './ReportsPage';
+import { AcBrandsPage } from './AcBrandsPage';
+import { UsersPage } from './UsersPage';
+import { OrganizationsPage } from './OrganizationsPage';
+import { VenuesPage } from './VenuesPage';
+import { DevicesPage } from './DevicesPage';
+
+const VALID_TABS = [
+  'overview',
+  'dashboard',
+  'reports',
+  'ac-brands',
+  'users',
+  'organizations',
+  'venues',
+  'devices',
+] as const;
+
+type ManagerTab = (typeof VALID_TABS)[number];
+
+function ManagerTabContent({ tab }: { tab: ManagerTab }) {
+  switch (tab) {
+    case 'overview':
+      return <OverviewPage />;
+    case 'dashboard':
+      return <DashboardPage />;
+    case 'reports':
+      return <ReportsPage />;
+    case 'ac-brands':
+      return <AcBrandsPage />;
+    case 'users':
+      return <UsersPage />;
+    case 'organizations':
+      return <OrganizationsPage />;
+    case 'venues':
+      return <VenuesPage />;
+    case 'devices':
+      return <DevicesPage />;
+    default:
+      return null;
+  }
+}
 
 export function ManagerPage() {
   const {
@@ -21,24 +65,21 @@ export function ManagerPage() {
   const navigate = useNavigate();
   const { tab } = useParams<{ tab: string }>();
 
-  // Route protection
   if (role !== 'manager') {
     return <Navigate to="/login" replace />;
   }
 
-  const validTabs = ['overview', 'dashboard', 'reports', 'ac-brands', 'users', 'organizations', 'venues', 'devices'];
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
   const defaultTab = isMobile ? 'dashboard' : 'overview';
 
-  // If no tab is specified in the URL, or if it is an invalid tab, or if trying to access overview on mobile, redirect
-  if (!tab || !validTabs.includes(tab) || (tab === 'overview' && isMobile)) {
+  if (!tab || !(VALID_TABS as readonly string[]).includes(tab) || (tab === 'overview' && isMobile)) {
     return <Navigate to={`/manager/${defaultTab}`} replace />;
   }
 
-  const currentTab = tab;
+  const currentTab = tab as ManagerTab;
 
   return (
-    <ManagerView
+    <ManagerLayout
       units={units}
       users={users}
       orgs={orgs}
@@ -55,13 +96,23 @@ export function ManagerPage() {
       onAddVenue={(v) => setVenues((prev) => [...prev, { ...v, id: `ven-${Date.now()}` }])}
       onAddDevice={(d) => setUnits((prev) => [...prev, { ...d, id: `ac-${Date.now()}` }])}
       onDeleteUser={(id) => setUsers((prev) => prev.filter((u) => u.id !== id))}
-      onUpdateUser={(id, data) => setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...data } : u)))}
+      onUpdateUser={(id, data) =>
+        setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...data } : u)))
+      }
       onDeleteOrg={(id) => setOrgs((prev) => prev.filter((o) => o.id !== id))}
-      onUpdateOrg={(id, data) => setOrgs((prev) => prev.map((o) => (o.id === id ? { ...o, ...data } : o)))}
+      onUpdateOrg={(id, data) =>
+        setOrgs((prev) => prev.map((o) => (o.id === id ? { ...o, ...data } : o)))
+      }
       onDeleteVenue={(id) => setVenues((prev) => prev.filter((v) => v.id !== id))}
-      onUpdateVenue={(id, data) => setVenues((prev) => prev.map((v) => (v.id === id ? { ...v, ...data } : v)))}
+      onUpdateVenue={(id, data) =>
+        setVenues((prev) => prev.map((v) => (v.id === id ? { ...v, ...data } : v)))
+      }
       onDeleteDevice={(id) => setUnits((prev) => prev.filter((u) => u.id !== id))}
-      onUpdateDevice={(id, data) => setUnits((prev) => prev.map((u) => (u.id === id ? { ...u, ...data } : u)))}
-    />
+      onUpdateDevice={(id, data) =>
+        setUnits((prev) => prev.map((u) => (u.id === id ? { ...u, ...data } : u)))
+      }
+    >
+      <ManagerTabContent tab={currentTab} />
+    </ManagerLayout>
   );
 }
