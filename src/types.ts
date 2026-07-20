@@ -23,6 +23,8 @@ export interface AuthUser {
   isActive: boolean;
   permission?: string | null;
   currentSubscription?: string | null;
+  assignedVenueIds?: string[];
+  organizationIds?: string[];
 }
 
 export interface ManagerAccount {

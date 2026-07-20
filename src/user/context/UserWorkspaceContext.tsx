@@ -35,8 +35,9 @@ function useUserWorkspaceValue(props: UserWorkspaceProps) {
     onUpdateDevice,
   } = props;
 
-  const assignedVenues = venues.filter((v) => user.assignedVenueIds.includes(v.id));
-  const assignedUnits = units.filter((u) => user.assignedVenueIds.includes(u.venueId));
+  const assignedVenueIds = user?.assignedVenueIds || [];
+  const assignedVenues = venues.filter((v) => assignedVenueIds.includes(v.id));
+  const assignedUnits = units.filter((u) => assignedVenueIds.includes(u.venueId));
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBrandFilter, setSelectedBrandFilter] = useState('All');

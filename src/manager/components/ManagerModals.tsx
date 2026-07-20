@@ -64,7 +64,7 @@ export function ManagerModals() {
                   <div className="space-y-3">
                     <p className="text-sm text-slate-500 mb-4">List of venues this user has permission to manage.</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {venues.filter(v => selectedUserForModal.assignedVenueIds.includes(v.id)).map((v) => (
+                      {venues.filter(v => selectedUserForModal.assignedVenueIds?.includes(v.id)).map((v) => (
                         <div key={v.id} className="p-4 bg-blue-50 rounded-xl border border-blue-100 flex items-center gap-3">
                           <div className="p-2 bg-white rounded-lg text-blue-600 shadow-sm">
                             <MapPin className="w-4 h-4" />
@@ -72,7 +72,7 @@ export function ManagerModals() {
                           <span className="font-bold text-blue-900">{v.name}</span>
                         </div>
                       ))}
-                      {venues.filter(v => selectedUserForModal.assignedVenueIds.includes(v.id)).length === 0 && (
+                      {venues.filter(v => selectedUserForModal.assignedVenueIds?.includes(v.id)).length === 0 && (
                         <div className="col-span-full text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                           <p className="text-slate-400 italic">No venues assigned to this user.</p>
                         </div>
@@ -85,7 +85,7 @@ export function ManagerModals() {
                   <div className="space-y-3">
                     <p className="text-sm text-slate-500 mb-4">Devices available to this user based on assigned venues.</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {units.filter(u => selectedUserForModal.assignedVenueIds.includes(u.venueId)).map((u) => {
+                      {units.filter(u => selectedUserForModal.assignedVenueIds?.includes(u.venueId)).map((u) => {
                         const venue = venues.find(v => v.id === u.venueId);
                         return (
                           <div key={u.id} className="p-4 bg-emerald-50 rounded-xl border border-emerald-100 flex justify-between items-center">
@@ -102,7 +102,7 @@ export function ManagerModals() {
                           </div>
                         );
                       })}
-                      {units.filter(u => selectedUserForModal.assignedVenueIds.includes(u.venueId)).length === 0 && (
+                      {units.filter(u => selectedUserForModal.assignedVenueIds?.includes(u.venueId)).length === 0 && (
                         <div className="col-span-full text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                           <p className="text-slate-400 italic">No devices accessible to this user.</p>
                         </div>
@@ -116,7 +116,7 @@ export function ManagerModals() {
                     <p className="text-sm text-slate-500 mb-4">Scheduled events and automations created for accessible devices.</p>
                     <div className="space-y-3">
                       {units
-                        .filter(u => selectedUserForModal.assignedVenueIds.includes(u.venueId))
+                        .filter(u => selectedUserForModal.assignedVenueIds?.includes(u.venueId))
                         .flatMap(u => u.events.map(e => ({ ...e, deviceName: u.name })))
                         .map((event, idx) => (
                           <div key={idx} className="p-4 bg-purple-50 rounded-xl border border-purple-100 flex items-center justify-between">
@@ -140,7 +140,7 @@ export function ManagerModals() {
                             )}
                           </div>
                         ))}
-                      {units.filter(u => selectedUserForModal.assignedVenueIds.includes(u.venueId)).flatMap(u => u.events).length === 0 && (
+                      {units.filter(u => selectedUserForModal.assignedVenueIds?.includes(u.venueId)).flatMap(u => u.events).length === 0 && (
                         <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                           <p className="text-slate-400 italic">No events found for this user.</p>
                         </div>
@@ -499,7 +499,7 @@ export function ManagerModals() {
                         setEditingUser({
                           ...editingUser,
                           organizationIds: ids,
-                          assignedVenueIds: editingUser.assignedVenueIds.filter((venueId) => {
+                          assignedVenueIds: (editingUser.assignedVenueIds || []).filter((venueId) => {
                             const venue = venues.find((v) => v.id === venueId);
                             return venue ? ids.includes(venue.orgId) : false;
                           }),
@@ -529,7 +529,7 @@ export function ManagerModals() {
                   <div className="min-w-0">
                     <label className="block text-sm font-medium text-slate-700 mb-2">Assigned Venues</label>
                     <MultiSelectDropdown
-                      values={editingUser.assignedVenueIds}
+                      values={editingUser.assignedVenueIds || []}
                       onChange={(ids) => setEditingUser({ ...editingUser, assignedVenueIds: ids })}
                       icon={MapPin}
                       placeholder={

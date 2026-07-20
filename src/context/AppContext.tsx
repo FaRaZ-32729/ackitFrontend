@@ -192,22 +192,84 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const mapMeToAuthUser = (me: any): AuthUser => ({
-    id: me.id || me._id,
-    name: me.name,
-    email: me.email,
-    role: me.role,
-    isActive: me.isActive ?? true,
-    permission: me.permission ?? null,
-    currentSubscription: me.currentSubscription
-      ? String(me.currentSubscription._id || me.currentSubscription)
-      : null,
-  });
+  const mapMeToAuthUser = (me: any): AuthUser => {
+    const assignedVenueIds = Array.isArray(me.venues)
+      ? me.venues
+          .map((v: any) => String(v?.venueId?._id || v?.venueId || ''))
+          .filter(Boolean)
+      : [];
+    const organizationIds = Array.isArray(me.organizations)
+      ? me.organizations
+          .map((org: any) => String(org?._id || org || ''))
+          .filter(Boolean)
+      : [];
+
+    return {
+      id: String(me.id || me._id),
+      name: me.name,
+      email: me.email,
+      role: me.role,
+      isActive: me.isActive ?? true,
+      permission: me.permission ?? null,
+      currentSubscription: me.currentSubscription
+        ? String(me.currentSubscription._id || me.currentSubscription)
+        : null,
+      assignedVenueIds,
+      organizationIds,
+    };
+  };
+
+  const hydrateWorkspaceFromMe = useCallback((me: any) => {
+    if (!me || me.role !== 'user') return;
+
+    const nextVenues: Venue[] = Array.isArray(me.venues)
+      ? me.venues
+          .map((v: any) => {
+            const id = String(v?.venueId?._id || v?.venueId || '');
+            if (!id) return null;
+            return {
+              id,
+              name: String(v?.venueName || v?.venueId?.name || 'Venue'),
+              orgId: String(v?.organization?.id || v?.organization?._id || ''),
+              orgName: v?.organization?.name,
+            } as Venue;
+          })
+          .filter(Boolean)
+      : [];
+
+    const orgMap = new Map<string, Organization>();
+    nextVenues.forEach((venue) => {
+      if (!venue.orgId) return;
+      if (!orgMap.has(venue.orgId)) {
+        orgMap.set(venue.orgId, {
+          id: venue.orgId,
+          name: venue.orgName || 'Organization',
+          managerId: '',
+        });
+      }
+    });
+    if (Array.isArray(me.organizations)) {
+      me.organizations.forEach((org: any) => {
+        const id = String(org?._id || org || '');
+        if (!id) return;
+        if (!orgMap.has(id)) {
+          orgMap.set(id, {
+            id,
+            name: String(org?.name || 'Organization'),
+            managerId: '',
+          });
+        }
+      });
+    }
+
+    setVenues(nextVenues);
+    setOrgs(Array.from(orgMap.values()));
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await loginRequest(email, password);
     const nextUser: AuthUser = {
-      id: data.user.id,
+      id: String(data.user.id),
       name: data.user.name,
       email: data.user.email,
       role: data.user.role,
@@ -216,10 +278,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       currentSubscription: data.user.currentSubscription
         ? String(data.user.currentSubscription)
         : null,
+      assignedVenueIds: data.user.assignedVenueIds || [],
+      organizationIds: data.user.organizationIds || [],
     };
     persistSession(data.token, nextUser);
+    if (nextUser.role === 'user') {
+      try {
+        const meData = await getMe();
+        const me = meData.user || meData;
+        const enriched = mapMeToAuthUser(me);
+        persistSession(data.token, enriched);
+        hydrateWorkspaceFromMe(me);
+        return enriched;
+      } catch {
+        // Keep login session even if /me enrichment fails
+      }
+    }
     return nextUser;
-  }, [persistSession]);
+  }, [persistSession, hydrateWorkspaceFromMe]);
 
   const logout = useCallback(async () => {
     try {
@@ -229,14 +305,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     persistSession(null, null);
     setSelectedUnitId(null);
+    setUsers([]);
+    setOrgs([]);
+    setVenues([]);
   }, [persistSession]);
 
   const refreshUser = useCallback(async () => {
     const data = await getMe();
-    const nextUser = mapMeToAuthUser(data.user || data);
+    const me = data.user || data;
+    const nextUser = mapMeToAuthUser(me);
     persistSession(getStoredToken(), nextUser);
+    hydrateWorkspaceFromMe(me);
     return nextUser;
-  }, [persistSession]);
+  }, [persistSession, hydrateWorkspaceFromMe]);
 
   const purchasePlan = useCallback(async (planId: string) => {
     const result = await purchasePlanRequest(planId);
@@ -572,6 +653,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const me = data.user || data;
         const nextUser = mapMeToAuthUser(me);
         persistSession(stored, nextUser);
+        hydrateWorkspaceFromMe(me);
       } catch {
         if (!cancelled) persistSession(null, null);
       } finally {
@@ -582,7 +664,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [persistSession]);
+  }, [persistSession, hydrateWorkspaceFromMe]);
 
   useEffect(() => {
     if (role) localStorage.setItem('iotify_role', role);

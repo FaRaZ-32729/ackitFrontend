@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Navigate, useParams, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/AppContext';
 import { UserLayout } from '../UserLayout';
@@ -6,6 +6,7 @@ import { UserDashboardPage } from './UserDashboardPage';
 import { UserReportsPage } from './UserReportsPage';
 import { UserDevicesPage } from './UserDevicesPage';
 import { UserAcBrandsPage } from './UserAcBrandsPage';
+import type { UserAccount } from '../../types';
 
 const VALID_TABS = ['dashboard', 'reports', 'devices', 'ac-brands'] as const;
 type UserTab = (typeof VALID_TABS)[number];
@@ -28,9 +29,10 @@ function UserTabContent({ tab }: { tab: UserTab }) {
 export function UserPage() {
   const {
     role,
+    authLoading,
+    user: authUser,
     units,
     setUnits,
-    users,
     orgs,
     venues,
     setSelectedUnitId,
@@ -40,7 +42,32 @@ export function UserPage() {
   const navigate = useNavigate();
   const { tab } = useParams<{ tab: string }>();
 
+  const workspaceUser = useMemo<UserAccount | null>(() => {
+    if (!authUser || authUser.role !== 'user') return null;
+    return {
+      id: authUser.id,
+      name: authUser.name,
+      email: authUser.email,
+      status: authUser.isActive ? 'active' : 'inactive',
+      assignedVenueIds: authUser.assignedVenueIds || [],
+      organizationIds: authUser.organizationIds || [],
+      managerId: '',
+      permission:
+        authUser.permission === 'manage' || authUser.permission === 'view'
+          ? authUser.permission
+          : 'view',
+    };
+  }, [authUser]);
+
+  if (authLoading) {
+    return null;
+  }
+
   if (role !== 'user') {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!workspaceUser) {
     return <Navigate to="/login" replace />;
   }
 
@@ -52,7 +79,7 @@ export function UserPage() {
 
   return (
     <UserLayout
-      user={users[0]}
+      user={workspaceUser}
       units={units}
       orgs={orgs}
       venues={venues}

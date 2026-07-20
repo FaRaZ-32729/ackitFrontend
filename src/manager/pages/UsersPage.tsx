@@ -246,8 +246,8 @@ export function UsersPage() {
                           </thead>
                           <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                             {users.map((user) => {
-                              const venueCount = venues.filter((v) => user.assignedVenueIds.includes(v.id)).length;
-                              const deviceCount = units.filter((u) => user.assignedVenueIds.includes(u.venueId)).length;
+                              const venueCount = venues.filter((v) => user.assignedVenueIds?.includes(v.id)).length;
+                              const deviceCount = units.filter((u) => user.assignedVenueIds?.includes(u.venueId)).length;
       
                               return (
                                 <tr key={user.id} className="hover:bg-slate-50/40 transition-colors">
@@ -348,8 +348,8 @@ export function UsersPage() {
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-[11px] text-slate-700">
                           {users.map((user) => {
-                            const venueCount = venues.filter((v) => user.assignedVenueIds.includes(v.id)).length;
-                            const deviceCount = units.filter((u) => user.assignedVenueIds.includes(u.venueId)).length;
+                            const venueCount = venues.filter((v) => user.assignedVenueIds?.includes(v.id)).length;
+                            const deviceCount = units.filter((u) => user.assignedVenueIds?.includes(u.venueId)).length;
       
                             return (
                               <tr key={user.id} className="hover:bg-slate-50/30">
