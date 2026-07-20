@@ -120,7 +120,7 @@ export function AddUserOverlayPage({ onClose }: AddUserOverlayPageProps) {
             User Created!
           </h2>
           <p className="text-xs text-slate-500 max-w-[240px] leading-relaxed font-semibold">
-            Invite sent to <strong className="text-slate-800">{email}</strong>. They will appear as pending until onboarding is complete.
+            Verification OTP sent to <strong className="text-slate-800">{email}</strong>. After OTP verification they can set a password and join.
           </p>
         </div>
       ) : (

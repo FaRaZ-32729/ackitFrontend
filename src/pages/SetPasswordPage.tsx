@@ -55,7 +55,7 @@ export function SetPasswordPage() {
         <div className="flex flex-col items-center justify-center mb-6">
           <ACKitLogo variant="full" size="md" />
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1.5 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-100">
-            MANAGER ONBOARDING
+            ACCOUNT ONBOARDING
           </span>
         </div>
 
@@ -65,7 +65,7 @@ export function SetPasswordPage() {
           </div>
           <h2 className="text-xl font-bold text-slate-800 tracking-tight">Create your password</h2>
           <p className="text-xs text-slate-400 font-semibold mt-1">
-            Choose a secure password for your manager account
+            Choose a secure password for your account
           </p>
         </div>
 

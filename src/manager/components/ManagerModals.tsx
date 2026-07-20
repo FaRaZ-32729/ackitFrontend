@@ -258,7 +258,7 @@ export function ManagerModals() {
                       </svg>
                     </div>
                     <h3 className="text-xl font-bold text-slate-900 mb-2">Invite Sent!</h3>
-                    <p className="text-slate-500">An onboarding link has been sent to the user's email. They will appear as "Pending Onboarding" until they join.</p>
+                    <p className="text-slate-500">A verification OTP has been sent to the user's email. After verifying OTP, they can set a password and join.</p>
                   </div>
                 )}
               </div>
