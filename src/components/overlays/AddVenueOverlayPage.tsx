@@ -5,8 +5,10 @@ import {
   Building2,
   CheckCircle2, 
   ArrowRight,
-  AlertCircle 
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
+import axios from 'axios';
 import { useAppContext } from '../../context/AppContext';
 import { CustomDropdown } from '../ui/CustomDropdown';
 
@@ -15,7 +17,7 @@ interface AddVenueOverlayPageProps {
 }
 
 export function AddVenueOverlayPage({ onClose }: AddVenueOverlayPageProps) {
-  const { setVenues, orgs } = useAppContext();
+  const { createVenue, orgs } = useAppContext();
   
   // Form State
   const [name, setName] = useState('');
@@ -24,13 +26,16 @@ export function AddVenueOverlayPage({ onClose }: AddVenueOverlayPageProps) {
   const [isSuccess, setIsSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    // Field Validation
     if (!name.trim()) {
       setError('Venue Name is required');
+      return;
+    }
+    if (name.trim().length < 2) {
+      setError('Venue name must be at least 2 characters');
       return;
     }
     if (!orgId) {
@@ -39,24 +44,25 @@ export function AddVenueOverlayPage({ onClose }: AddVenueOverlayPageProps) {
     }
 
     setIsSubmitting(true);
-
-    // Simulate saving delay for rich UX feedback
-    setTimeout(() => {
-      const newVenue = {
-        id: `venue-${Date.now()}`,
-        name: name.trim(),
-        orgId
-      };
-
-      setVenues(prev => [...prev, newVenue]);
-      setIsSubmitting(false);
+    try {
+      await createVenue(name.trim(), orgId);
       setIsSuccess(true);
-
-      // Auto-close after 2 seconds
-      setTimeout(() => {
+      window.setTimeout(() => {
         onClose();
       }, 2000);
-    }, 800);
+    } catch (err) {
+      let message = 'Failed to create venue';
+      if (axios.isAxiosError(err)) {
+        const data = err.response?.data as {
+          message?: string;
+          errors?: { message: string }[];
+        } | undefined;
+        message = data?.errors?.[0]?.message || data?.message || message;
+      }
+      setError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -127,7 +133,8 @@ export function AddVenueOverlayPage({ onClose }: AddVenueOverlayPageProps) {
                       setName(e.target.value);
                       if (error) setError('');
                     }}
-                    className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all placeholder:text-slate-400"
+                    disabled={isSubmitting}
+                    className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all placeholder:text-slate-400 disabled:opacity-60"
                   />
                   <MapPin className="w-4 h-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
@@ -163,11 +170,11 @@ export function AddVenueOverlayPage({ onClose }: AddVenueOverlayPageProps) {
             
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !name.trim() || !orgId}
               className="py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider rounded-full text-center flex items-center justify-center gap-2 shadow-lg shadow-blue-600/10 transition-all active:scale-95 disabled:opacity-50"
             >
               {isSubmitting ? (
-                <div className="w-4.5 h-4.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <Loader2 className="w-4.5 h-4.5 animate-spin" />
               ) : (
                 <>
                   <span>Save Venue</span>

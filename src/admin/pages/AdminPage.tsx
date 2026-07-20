@@ -9,6 +9,7 @@ import { DevicesPage } from './DevicesPage';
 import { AcBrandsPage } from './AcBrandsPage';
 import { PlansPage } from './PlansPage';
 import { OtaManagementPage } from './OtaManagementPage';
+import { createManagerByAdmin } from '../../api/authApi';
 
 const VALID_TABS = [
   'managers',
@@ -46,16 +47,15 @@ function AdminTabContent({ tab }: { tab: AdminTab }) {
 export function AdminPage() {
   const {
     role,
-    setRole,
+    logout,
     managers,
     setManagers,
     plans,
-    setPlans,
     orgs,
     venues,
     units,
     users,
-    setSelectedUnitId,
+    createPlan,
   } = useAppContext();
 
   const navigate = useNavigate();
@@ -81,15 +81,27 @@ export function AdminPage() {
       users={users}
       activeTab={currentTab}
       onTabChange={(nextTab) => navigate(`/admin/${nextTab}`)}
-      onAddManager={(m) => setManagers((prev) => [...prev, { ...m, id: `mgr-${Date.now()}` }])}
-      onAddPlan={(p) => setPlans((prev) => [...prev, { ...p, id: `plan-${Date.now()}` }])}
+      onAddManager={async ({ name, email }) => {
+        const response = await createManagerByAdmin(name, email);
+        setManagers((prev) => [
+          ...prev,
+          {
+            id: response.user.id,
+            name: response.user.name,
+            email: response.user.email,
+            status: 'pending',
+            planId: '',
+          },
+        ]);
+      }}
+      onAddPlan={async (payload) => {
+        await createPlan(payload);
+      }}
       onUpdateManagerPlan={(mgrId, planId) =>
         setManagers((prev) => prev.map((m) => (m.id === mgrId ? { ...m, planId } : m)))
       }
       onLogout={() => {
-        setRole(null);
-        setSelectedUnitId(null);
-        navigate('/login');
+        void logout().then(() => navigate('/login'));
       }}
     >
       <AdminTabContent tab={currentTab} />

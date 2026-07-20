@@ -61,12 +61,13 @@ export function IotfiyLogo({ small }: { small?: boolean }) {
 export function ConsoleLayout() {
   const { 
     role, 
-    setRole, 
+    logout,
+    authLoading,
+    hasActiveSubscription,
     activeTab, 
     setActiveTab, 
     isSidebarOpen, 
     setIsSidebarOpen, 
-    setSelectedUnitId 
   } = useAppContext();
   
   const navigate = useNavigate();
@@ -92,8 +93,16 @@ export function ConsoleLayout() {
     }
   }, [tab, setActiveTab]);
 
+  if (authLoading) {
+    return null;
+  }
+
   if (!role) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (role === 'manager' && !hasActiveSubscription) {
+    return <Navigate to="/subscribe" replace />;
   }
 
   const managerTabs = [
@@ -119,9 +128,7 @@ export function ConsoleLayout() {
   };
 
   const handleLogout = () => {
-    setRole(null);
-    setSelectedUnitId(null);
-    navigate('/login');
+    void logout().then(() => navigate('/login'));
   };
 
   const isTabActive = (tabId: string) => {

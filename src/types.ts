@@ -6,12 +6,23 @@ export interface SubscriptionPlan {
   maxOrgs: number;
   maxVenues: number;
   maxDevices: number;
-  reportVisibility: ('hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly')[];
+  reportVisibility?: ('hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly')[];
   planType?: 'free' | 'basic' | 'premium' | 'custom';
   description?: string;
   pricePkr?: number;
   durationDays?: number;
   maxUsers?: number;
+  assignedToEmail?: string;
+}
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  isActive: boolean;
+  permission?: string | null;
+  currentSubscription?: string | null;
 }
 
 export interface ManagerAccount {
@@ -28,7 +39,9 @@ export interface UserAccount {
   email: string;
   status: 'active' | 'inactive' | 'pending';
   assignedVenueIds: string[];
+  organizationIds?: string[];
   managerId: string;
+  permission?: 'view' | 'manage';
   subscriptionType?: string;
 }
 
@@ -37,13 +50,15 @@ export interface Organization {
   name: string;
   managerId: string;
   address?: string;
-  description?: string;
+  ownerName?: string;
+  ownerEmail?: string;
 }
 
 export interface Venue {
   id: string;
   name: string;
   orgId: string;
+  orgName?: string;
 }
 
 export interface ACEvent {
@@ -83,6 +98,8 @@ export interface ACUnit {
   brand?: string;
   hasEnergySensor?: boolean;
   capacityTon?: string;
+  mode?: string;
+  fanSpeed?: string;
 }
 
 export function getACPowerDraw(unit: ACUnit): { power: number; unitStr: string; energyToday: number } {

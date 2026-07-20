@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Check } from 'lucide-react';
+import { X, Check, Loader2 } from 'lucide-react';
 import { useAdminWorkspace } from '../context/AdminWorkspaceContext';
 
 /** Root-level admin drawer (legacy markup/CSS unchanged) */
@@ -32,6 +32,7 @@ export function AddManagerDrawer() {
     newManagerName, setNewManagerName,
     newManagerEmail, setNewManagerEmail,
     newManagerPlan, setNewManagerPlan,
+    isCreatingManager, createManagerError,
     newPlanName, setNewPlanName,
     newPlanType, setNewPlanType,
     newPlanDescription, setNewPlanDescription,
@@ -41,9 +42,8 @@ export function AddManagerDrawer() {
     newPlanMaxVenues, setNewPlanMaxVenues,
     newPlanMaxDevices, setNewPlanMaxDevices,
     newPlanMaxUsers, setNewPlanMaxUsers,
-    newPlanVisibility, setNewPlanVisibility,
     handleAddManager, closeAddManagerModal, handleAddPlan,
-    toggleVisibility, toggleManager,
+    toggleManager,
     totalManagersCount, activeManagersCount, inactiveManagersCount,
   } = useAdminWorkspace();
 
@@ -118,23 +118,11 @@ export function AddManagerDrawer() {
                           />
                         </div>
     
-                        {/* Initial Plan Assignment */}
-                        <div>
-                          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
-                            Initial Plan Assignment
-                          </label>
-                          <select
-                            value={newManagerPlan}
-                            onChange={(e) => setNewManagerPlan(e.target.value)}
-                            className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 text-sm font-semibold transition-all"
-                          >
-                            {plans.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name} Plan
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        {createManagerError && (
+                          <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold">
+                            {createManagerError}
+                          </div>
+                        )}
                       </>
                     ) : (
                       <div className="text-center py-12 space-y-4">
@@ -157,16 +145,25 @@ export function AddManagerDrawer() {
                       <button
                         type="button"
                         onClick={closeAddManagerModal}
-                        className="w-full py-2.5 px-4 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl font-bold text-sm transition-all flex items-center justify-center cursor-pointer"
+                        disabled={isCreatingManager}
+                        className="w-full py-2.5 px-4 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-60 rounded-xl font-bold text-sm transition-all flex items-center justify-center cursor-pointer"
                       >
                         Cancel
                       </button>
                       <button
                         type="button"
-                        onClick={handleAddManager}
-                        className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-1 shadow-md shadow-indigo-600/10 cursor-pointer"
+                        onClick={() => void handleAddManager()}
+                        disabled={isCreatingManager}
+                        className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-1 shadow-md shadow-indigo-600/10 cursor-pointer"
                       >
-                        Invite Manager
+                        {isCreatingManager ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Sending Invite...
+                          </>
+                        ) : (
+                          'Invite Manager'
+                        )}
                       </button>
                     </div>
                   )}

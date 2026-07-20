@@ -50,23 +50,39 @@ function ManagerTabContent({ tab }: { tab: ManagerTab }) {
 export function ManagerPage() {
   const {
     role,
+    hasActiveSubscription,
+    authLoading,
     units,
     setUnits,
     users,
-    setUsers,
     orgs,
-    setOrgs,
     venues,
-    setVenues,
     setSelectedUnitId,
     handleTogglePower,
+    createOrganization,
+    updateOrganization,
+    deleteOrganization,
+    createVenue,
+    updateVenue,
+    deleteVenue,
+    createSubUser,
+    updateSubUser,
+    deleteSubUser,
   } = useAppContext();
 
   const navigate = useNavigate();
   const { tab } = useParams<{ tab: string }>();
 
+  if (authLoading) {
+    return null;
+  }
+
   if (role !== 'manager') {
     return <Navigate to="/login" replace />;
+  }
+
+  if (!hasActiveSubscription) {
+    return <Navigate to="/subscribe" replace />;
   }
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
@@ -91,22 +107,56 @@ export function ManagerPage() {
         navigate(`/device/${id}`);
       }}
       onTogglePower={handleTogglePower}
-      onAddUser={(u) => setUsers((prev) => [...prev, { ...u, id: `usr-${Date.now()}` }])}
-      onAddOrg={(o) => setOrgs((prev) => [...prev, { ...o, id: `org-${Date.now()}` }])}
-      onAddVenue={(v) => setVenues((prev) => [...prev, { ...v, id: `ven-${Date.now()}` }])}
+      onAddUser={async (u) => {
+        const organizationIds = u.organizationIds || [];
+        if (organizationIds.length === 0) {
+          throw new Error('At least one organization is required');
+        }
+        return createSubUser({
+          name: u.name.trim(),
+          email: u.email.trim(),
+          organizations: organizationIds,
+          venues: u.assignedVenueIds || [],
+          permission: u.permission || 'view',
+        });
+      }}
+      onAddOrg={async (o) => {
+        return createOrganization(o.name.trim(), o.address?.trim() || undefined);
+      }}
+      onAddVenue={async (v) => {
+        return createVenue(v.name.trim(), v.orgId);
+      }}
       onAddDevice={(d) => setUnits((prev) => [...prev, { ...d, id: `ac-${Date.now()}` }])}
-      onDeleteUser={(id) => setUsers((prev) => prev.filter((u) => u.id !== id))}
-      onUpdateUser={(id, data) =>
-        setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...data } : u)))
-      }
-      onDeleteOrg={(id) => setOrgs((prev) => prev.filter((o) => o.id !== id))}
-      onUpdateOrg={(id, data) =>
-        setOrgs((prev) => prev.map((o) => (o.id === id ? { ...o, ...data } : o)))
-      }
-      onDeleteVenue={(id) => setVenues((prev) => prev.filter((v) => v.id !== id))}
-      onUpdateVenue={(id, data) =>
-        setVenues((prev) => prev.map((v) => (v.id === id ? { ...v, ...data } : v)))
-      }
+      onDeleteUser={async (id) => {
+        await deleteSubUser(id);
+      }}
+      onUpdateUser={async (id, data) => {
+        await updateSubUser(id, {
+          organizations: data.organizationIds,
+          venues: data.assignedVenueIds,
+          permission: data.permission,
+        });
+      }}
+      onDeleteOrg={async (id) => {
+        await deleteOrganization(id);
+      }}
+      onUpdateOrg={async (id, data) => {
+        if (!data.name?.trim()) return;
+        await updateOrganization(
+          id,
+          data.name.trim(),
+          data.address?.trim() ?? ''
+        );
+      }}
+      onDeleteVenue={async (id) => {
+        await deleteVenue(id);
+      }}
+      onUpdateVenue={async (id, data) => {
+        await updateVenue(id, {
+          name: data.name?.trim(),
+          organizationId: data.orgId,
+        });
+      }}
       onDeleteDevice={(id) => setUnits((prev) => prev.filter((u) => u.id !== id))}
       onUpdateDevice={(id, data) =>
         setUnits((prev) => prev.map((u) => (u.id === id ? { ...u, ...data } : u)))

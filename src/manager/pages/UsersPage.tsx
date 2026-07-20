@@ -1,48 +1,83 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useManagerWorkspace } from '../context/ManagerWorkspaceContext';
-import { Users, User, Plus, Edit, Trash2, MapPin, MonitorSmartphone, Activity } from 'lucide-react';
+import { useAppContext } from '../../context/AppContext';
+import { Users, User, Edit, Trash2, MapPin, Building2, Loader2 } from 'lucide-react';
 import { MultiSelectDropdown } from '../../components/ui/MultiSelectDropdown';
 import { CustomDropdown } from '../../components/ui/CustomDropdown';
+import axios from 'axios';
 
 /** Manager users page — markup/CSS preserved from legacy ManagerView */
 export function UsersPage() {
   const {
+    fetchMyUsers,
+    fetchMyVenues,
+    usersLoading,
+    usersError,
+    user: authUser,
+  } = useAppContext();
+
+  const {
     units, users, orgs, venues,
-    onTabChange, onSelectUnit, onTogglePower,
-    onAddUser, onAddOrg, onAddVenue, onAddDevice,
-    onDeleteUser, onUpdateUser, onDeleteOrg, onUpdateOrg,
-    onDeleteVenue, onUpdateVenue, onDeleteDevice, onUpdateDevice,
-    showAddUser, setShowAddUser, addUserStep, setAddUserStep,
+    onAddUser,
     newUserName, setNewUserName, newUserEmail, setNewUserEmail,
-    newUserStatus, setNewUserStatus, newUserVenues, setNewUserVenues,
-    showAddOrg, setShowAddOrg, newOrgName, setNewOrgName,
-    newOrgAddress, setNewOrgAddress, newOrgDescription, setNewOrgDescription,
-    showAddVenue, setShowAddVenue, newVenueName, setNewVenueName, newVenueOrgId, setNewVenueOrgId,
-    showAddDevice, setShowAddDevice, newDeviceName, setNewDeviceName,
-    newDeviceOrgId, setNewDeviceOrgId, newDeviceVenueId, setNewDeviceVenueId,
-    newDeviceBrand, setNewDeviceBrand, newDeviceEnergySensor, setNewDeviceEnergySensor,
-    newDeviceCapacity, setNewDeviceCapacity,
-    editingUser, setEditingUser, editingOrg, setEditingOrg,
-    editingVenue, setEditingVenue, editingDevice, setEditingDevice,
+    newUserPermission, setNewUserPermission, newUserOrgs, setNewUserOrgs,
+    newUserVenues, setNewUserVenues,
+    editingUser, setEditingUser,
     deletingId, setDeletingId, deleteType, setDeleteType,
-    expandedDeviceId, setExpandedDeviceId,
-    selectedDeviceVenueId, setSelectedDeviceVenueId,
-    selectedVenueOrgId, setSelectedVenueOrgId,
-    venueSearchQuery, setVenueSearchQuery, deviceSearchQuery, setDeviceSearchQuery,
-    deviceTempInputs, setDeviceTempInputs,
-    activeDetailType, setActiveDetailType, selectedUserForModal, setSelectedUserForModal,
-    energyFilterType, setEnergyFilterType, selectedEnergyId, setSelectedEnergyId,
-    energyView, setEnergyView,
-    filteredUnits, aggregatedEnergyData, faultyDevices, handleDownloadReport,
-    showAddEventModal, setShowAddEventModal,
-    eventDeviceId, setEventDeviceId, eventName, setEventName, eventTemp, setEventTemp,
-    eventIsRecurring, setEventIsRecurring, eventStartDate, setEventStartDate,
-    eventEndDate, setEventEndDate, eventDays, setEventDays,
-    eventIsOnOff, setEventIsOnOff, eventOnOffAction, setEventOnOffAction, eventTime, setEventTime,
-    handleAddUser, closeAddUserModal, openUserDetailModal, closeUserDetailModal,
-    handleAddOrg, handleAddVenue, handleAddDevice, closeAddEventModal, handleAddEvent,
-    toggleVenue, filteredManagedVenues, filteredManagedDevices,
+    openUserDetailModal,
   } = useManagerWorkspace();
+
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  useEffect(() => {
+    void Promise.allSettled([fetchMyUsers(), fetchMyVenues()]);
+  }, [fetchMyUsers, fetchMyVenues]);
+
+  const venueOptions = useMemo(() => {
+    const selectedOrgs = newUserOrgs.length > 0 ? newUserOrgs : orgs.map((o) => o.id);
+    return venues
+      .filter((v) => selectedOrgs.includes(v.orgId))
+      .map((v) => ({ value: v.id, label: v.name }));
+  }, [venues, newUserOrgs, orgs]);
+
+  const handleCreateUser = async () => {
+    if (!newUserName.trim() || !newUserEmail.trim() || newUserOrgs.length === 0 || creating) {
+      return;
+    }
+    setCreating(true);
+    setCreateError('');
+    try {
+      await onAddUser({
+        name: newUserName.trim(),
+        email: newUserEmail.trim(),
+        status: 'pending',
+        assignedVenueIds: newUserVenues,
+        organizationIds: newUserOrgs,
+        permission: newUserPermission,
+        managerId: authUser?.id || '',
+      });
+      setNewUserName('');
+      setNewUserEmail('');
+      setNewUserPermission('view');
+      setNewUserOrgs([]);
+      setNewUserVenues([]);
+    } catch (err) {
+      let message = 'Failed to create user';
+      if (axios.isAxiosError(err)) {
+        const data = err.response?.data as {
+          message?: string;
+          errors?: { message: string }[];
+        } | undefined;
+        message = data?.errors?.[0]?.message || data?.message || message;
+      } else if (err instanceof Error) {
+        message = err.message;
+      }
+      setCreateError(message);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <>
@@ -90,17 +125,38 @@ export function UsersPage() {
                           placeholder="user@example.com"
                         />
                       </div>
+
+                      <div className="space-y-1.5 min-w-0">
+                        <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
+                          Organizations <span className="text-red-500">*</span>
+                        </label>
+                        <MultiSelectDropdown
+                          values={newUserOrgs}
+                          onChange={(ids) => {
+                            setNewUserOrgs(ids);
+                            setNewUserVenues((prev) =>
+                              prev.filter((venueId) => {
+                                const venue = venues.find((v) => v.id === venueId);
+                                return venue ? ids.includes(venue.orgId) : false;
+                              })
+                            );
+                          }}
+                          icon={Building2}
+                          placeholder="Select organizations…"
+                          options={orgs.map((o) => ({ value: o.id, label: o.name }))}
+                        />
+                      </div>
       
                       <div className="space-y-1.5 min-w-0">
                         <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
-                          Status
+                          Permission
                         </label>
                         <CustomDropdown
-                          value={newUserStatus}
-                          onChange={(v) => setNewUserStatus(v as 'active' | 'inactive')}
+                          value={newUserPermission}
+                          onChange={(v) => setNewUserPermission(v as 'view' | 'manage')}
                           options={[
-                            { value: 'active', label: 'Active' },
-                            { value: 'inactive', label: 'Inactive' },
+                            { value: 'view', label: 'View' },
+                            { value: 'manage', label: 'Manage' },
                           ]}
                         />
                       </div>
@@ -113,33 +169,40 @@ export function UsersPage() {
                           values={newUserVenues}
                           onChange={setNewUserVenues}
                           icon={MapPin}
-                          placeholder="Select venues…"
-                          options={venues.map((v) => ({ value: v.id, label: v.name }))}
+                          placeholder={newUserOrgs.length === 0 ? 'Select organizations first…' : 'Select venues…'}
+                          options={venueOptions}
+                          disabled={newUserOrgs.length === 0}
                         />
                       </div>
                     </div>
       
-                    <div className="px-5 py-4 border-t border-slate-100 shrink-0">
+                    <div className="px-5 py-4 border-t border-slate-100 shrink-0 space-y-3">
+                      {createError && (
+                        <div className="p-2.5 bg-red-50 border border-red-100 rounded-xl text-red-600 text-[11px] font-semibold">
+                          {createError}
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
-                          if (!newUserName.trim() || !newUserEmail.trim()) return;
-                          onAddUser({
-                            name: newUserName.trim(),
-                            email: newUserEmail.trim(),
-                            status: newUserStatus === 'active' ? 'active' : 'pending',
-                            assignedVenueIds: newUserVenues,
-                            managerId: 'mgr-1',
-                          });
-                          setNewUserName('');
-                          setNewUserEmail('');
-                          setNewUserStatus('active');
-                          setNewUserVenues([]);
+                          void handleCreateUser();
                         }}
-                        disabled={!newUserName.trim() || !newUserEmail.trim()}
-                        className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={
+                          creating ||
+                          !newUserName.trim() ||
+                          !newUserEmail.trim() ||
+                          newUserOrgs.length === 0
+                        }
+                        className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
-                        Create User
+                        {creating ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          'Create User'
+                        )}
                       </button>
                     </div>
                   </aside>
@@ -154,7 +217,17 @@ export function UsersPage() {
                     </div>
       
                     <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
-                      {users.length === 0 ? (
+                      {usersError && (
+                        <div className="m-4 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold">
+                          {usersError}
+                        </div>
+                      )}
+                      {usersLoading && users.length === 0 ? (
+                        <div className="h-full min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
+                          <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-3" />
+                          <span className="text-sm font-black text-slate-400 uppercase tracking-widest">Loading users…</span>
+                        </div>
+                      ) : users.length === 0 ? (
                         <div className="h-full min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
                           <Users className="w-12 h-12 text-slate-300 mb-3" />
                           <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Users Found</span>
@@ -252,7 +325,12 @@ export function UsersPage() {
                 {/* Mobile / tablet: list only (add via overlay) */}
                 <div className="lg:hidden flex-1 min-h-0 overflow-hidden bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col">
                   <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
-                    {users.length === 0 ? (
+                    {usersLoading && users.length === 0 ? (
+                      <div className="flex-1 min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
+                        <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-3" />
+                        <span className="text-sm font-black text-slate-400 uppercase tracking-widest">Loading users…</span>
+                      </div>
+                    ) : users.length === 0 ? (
                       <div className="flex-1 min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
                         <Users className="w-12 h-12 text-slate-300 mb-3" />
                         <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Users Found</span>

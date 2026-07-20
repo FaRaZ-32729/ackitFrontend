@@ -1,9 +1,17 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAdminWorkspace } from '../context/AdminWorkspaceContext';
-import { MapPin, MonitorSmartphone } from 'lucide-react';
+import { useAppContext } from '../../context/AppContext';
+import { MapPin, MonitorSmartphone, Loader2 } from 'lucide-react';
 
 /** Admin venues page — markup/CSS preserved from legacy AdminView */
 export function VenuesPage() {
+  const {
+    fetchAllVenues,
+    fetchAllOrganizations,
+    venuesLoading,
+    venuesError,
+  } = useAppContext();
+
   const {
     managers, plans, orgs, venues, units, users, activeTab, onTabChange,
     onAddManager, onUpdateManagerPlan, onAddPlan, onLogout,
@@ -40,11 +48,14 @@ export function VenuesPage() {
     newPlanMaxVenues, setNewPlanMaxVenues,
     newPlanMaxDevices, setNewPlanMaxDevices,
     newPlanMaxUsers, setNewPlanMaxUsers,
-    newPlanVisibility, setNewPlanVisibility,
     handleAddManager, closeAddManagerModal, handleAddPlan,
-    toggleVisibility, toggleManager,
+    toggleManager,
     totalManagersCount, activeManagersCount, inactiveManagersCount,
   } = useAdminWorkspace();
+
+  useEffect(() => {
+    void Promise.allSettled([fetchAllVenues(), fetchAllOrganizations()]);
+  }, [fetchAllVenues, fetchAllOrganizations]);
 
   return (
     <>
@@ -97,6 +108,12 @@ export function VenuesPage() {
                       <h3 className="text-sm font-black text-slate-800 tracking-wide uppercase">All venues</h3>
                       <p className="text-xs text-slate-400 font-semibold mt-0.5">Every venue across all organizations on the platform</p>
                     </div>
+
+                    {venuesError && (
+                      <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold">
+                        {venuesError}
+                      </div>
+                    )}
       
                     <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-x-auto">
                       <table className="w-full text-left border-collapse min-w-[700px]">
@@ -108,6 +125,23 @@ export function VenuesPage() {
                           </tr>
                         </thead>
                         <tbody>
+                          {venuesLoading && venues.length === 0 && (
+                            <tr>
+                              <td colSpan={3} className="py-10 text-center">
+                                <div className="inline-flex items-center gap-2 text-slate-400 text-xs font-semibold">
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  Loading venues…
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          {!venuesLoading && venues.length === 0 && (
+                            <tr>
+                              <td colSpan={3} className="py-10 text-center text-xs font-semibold text-slate-400">
+                                No venues found
+                              </td>
+                            </tr>
+                          )}
                           {venues.map((venue) => {
                             const org = orgs.find((o) => o.id === venue.orgId);
                             const venueDevices = units.filter((u) => u.venueId === venue.id);
@@ -117,7 +151,7 @@ export function VenuesPage() {
                                   {venue.name}
                                 </td>
                                 <td className="py-4 px-4 text-xs font-bold text-slate-500">
-                                  {org ? org.name : 'Unknown Org'}
+                                  {org?.name || venue.orgName || 'Unknown Org'}
                                 </td>
                                 <td className="py-4 px-4 text-sm font-bold text-slate-800">
                                   {venueDevices.length}

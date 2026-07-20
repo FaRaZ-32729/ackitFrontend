@@ -1,59 +1,27 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAdminWorkspace } from '../context/AdminWorkspaceContext';
-import { Users, Activity, Plus, Sparkles, Crown, Gift, Shield } from 'lucide-react';
+import { useAppContext } from '../../context/AppContext';
+import { Plus, Sparkles, Crown, Gift, Shield, Activity, Loader2 } from 'lucide-react';
 
 /** Admin plans page — markup/CSS preserved from legacy AdminView */
 export function PlansPage() {
-  const {
-    managers, plans, orgs, venues, units, users, activeTab, onTabChange,
-    onAddManager, onUpdateManagerPlan, onAddPlan, onLogout,
-    currentTab, setCurrentTab,
-    managementDropdownOpen, setManagementDropdownOpen,
-    mobileSidebarOpen, setMobileSidebarOpen,
-    expandedManagerId, setExpandedManagerId,
-    selectedManagerId, setSelectedManagerId,
-    managerDetailTab, setManagerDetailTab,
-    selectedOtaVersion, setSelectedOtaVersion,
-    otaVersions, setOtaVersions,
-    deviceSearchQuery, setDeviceSearchQuery,
-    selectedDeviceIds, setSelectedDeviceIds,
-    uploadVersionId, setUploadVersionId,
-    uploadFile, setUploadFile,
-    isUploading, setIsUploading,
-    uploadProgress, setUploadProgress,
-    otaStatus, setOtaStatus,
-    otaProgress, setOtaProgress,
-    onlineDevices, setOnlineDevices,
-    handleStartOta, handleUploadFirmware,
-    showAddManager, setShowAddManager,
-    addManagerStep, setAddManagerStep,
-    showAddPlan, setShowAddPlan,
-    newManagerName, setNewManagerName,
-    newManagerEmail, setNewManagerEmail,
-    newManagerPlan, setNewManagerPlan,
-    newPlanName, setNewPlanName,
-    newPlanType, setNewPlanType,
-    newPlanDescription, setNewPlanDescription,
-    newPlanPrice, setNewPlanPrice,
-    newPlanDuration, setNewPlanDuration,
-    newPlanMaxOrgs, setNewPlanMaxOrgs,
-    newPlanMaxVenues, setNewPlanMaxVenues,
-    newPlanMaxDevices, setNewPlanMaxDevices,
-    newPlanMaxUsers, setNewPlanMaxUsers,
-    newPlanVisibility, setNewPlanVisibility,
-    handleAddManager, closeAddManagerModal, handleAddPlan,
-    toggleVisibility, toggleManager,
-    totalManagersCount, activeManagersCount, inactiveManagersCount,
-  } = useAdminWorkspace();
+  const { plans, setShowAddPlan } = useAdminWorkspace();
+  const { fetchPlans, plansLoading, plansError } = useAppContext();
+
+  useEffect(() => {
+    void fetchPlans().catch(() => {
+      // Error surfaced via plansError
+    });
+  }, [fetchPlans]);
 
   return (
     <>
       <div className="space-y-6">
                     {/* Plan Cards Top Header */}
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center gap-3 flex-wrap">
                       <div>
                         <h3 className="text-sm font-black text-slate-800 tracking-wide uppercase">Subscription Plans</h3>
-                        <p className="text-xs text-slate-400 font-semibold mt-0.5">Control pricing structures, cycle limits, and report visibility tiers</p>
+                        <p className="text-xs text-slate-400 font-semibold mt-0.5">Control pricing structures and cycle limits</p>
                       </div>
                       <button
                         onClick={() => setShowAddPlan(true)}
@@ -63,8 +31,24 @@ export function PlansPage() {
                         Create New Plan
                       </button>
                     </div>
-      
-                    {/* Grid of plans (cards style) */}
+
+                    {plansError && (
+                      <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold">
+                        {plansError}
+                      </div>
+                    )}
+
+                    {plansLoading && plans.length === 0 ? (
+                      <div className="flex items-center justify-center gap-2 py-16 text-slate-400 text-sm font-semibold">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Loading plans...
+                      </div>
+                    ) : plans.length === 0 ? (
+                      <div className="py-16 text-center text-slate-400 text-sm font-semibold">
+                        No plans yet. Create your first plan to get started.
+                      </div>
+                    ) : (
+                    /* Grid of plans (cards style) */
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {plans.map((plan) => {
                         const TypeIcon = plan.planType === 'free' ? Gift : plan.planType === 'premium' ? Crown : plan.planType === 'custom' ? Sparkles : Shield;
@@ -105,8 +89,14 @@ export function PlansPage() {
                                   {plan.description}
                                 </p>
                               )}
+
+                              {plan.planType === 'custom' && plan.assignedToEmail && (
+                                <p className="text-xs text-indigo-600 mb-4 font-semibold">
+                                  Assigned to: {plan.assignedToEmail}
+                                </p>
+                              )}
                               
-                              <div className="space-y-3 mb-6">
+                              <div className="space-y-3">
                                 <div className="flex justify-between items-center text-xs">
                                   <span className="text-slate-500 font-semibold">Organizations limit</span>
                                   <span className="font-bold text-slate-800">{plan.maxOrgs || 'Unlimited'}</span>
@@ -127,21 +117,11 @@ export function PlansPage() {
                                 )}
                               </div>
                             </div>
-      
-                            <div>
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">Reports Access</p>
-                              <div className="flex flex-wrap gap-1">
-                                {plan.reportVisibility.map((v) => (
-                                  <span key={v} className="px-2 py-1 bg-slate-50 border border-slate-200 text-slate-600 font-bold text-[9px] rounded-lg capitalize">
-                                    {v}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
                           </div>
                         );
                       })}
                     </div>
+                    )}
                   </div>
     </>
   );

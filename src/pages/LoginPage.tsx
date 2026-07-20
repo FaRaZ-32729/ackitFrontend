@@ -1,20 +1,21 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Shield, Users, User, Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
 import { ACKitLogo } from '../components/ui/ACKitLogo';
 import { useAppContext } from '../context/AppContext';
-import { Role } from '../types';
+import axios from 'axios';
 
 export function LoginPage() {
-  const { setRole } = useAppContext();
+  const { login } = useAppContext();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
@@ -28,52 +29,28 @@ export function LoginPage() {
       return;
     }
 
-    const lowerEmail = email.toLowerCase().trim();
-    if (lowerEmail === 'admin@example.com') {
-      setSuccess('Welcome Admin! Loading console...');
-      setTimeout(() => {
-        setRole('admin');
+    setLoading(true);
+    try {
+      const user = await login(email.trim(), password);
+      setSuccess(`Welcome${user.name ? ` ${user.name}` : ''}! Loading console...`);
+      if (user.role === 'admin') {
         navigate('/admin');
-      }, 1000);
-    } else if (lowerEmail === 'alice@example.com') {
-      setSuccess('Welcome Manager! Loading console...');
-      setTimeout(() => {
-        setRole('manager');
-        navigate('/manager');
-      }, 1000);
-    } else if (lowerEmail === 'bob@example.com') {
-      setSuccess('Welcome back! Loading dashboard...');
-      setTimeout(() => {
-        setRole('user');
+      } else if (user.role === 'manager') {
+        navigate(user.currentSubscription ? '/manager' : '/subscribe');
+      } else {
         navigate('/user');
-      }, 1000);
-    } else {
-      setSuccess('Login successful! Loading dashboard...');
-      setTimeout(() => {
-        setRole('user');
-        navigate('/user');
-      }, 1000);
+      }
+    } catch (err) {
+      let message = 'Login failed. Please try again.';
+      if (axios.isAxiosError(err)) {
+        message = (err.response?.data as { message?: string })?.message || message;
+      } else if (err instanceof Error) {
+        message = err.message;
+      }
+      setError(message);
+    } finally {
+      setLoading(false);
     }
-  };
-
-  const handleQuickBypass = (roleType: Role) => {
-    setError('');
-    setSuccess('');
-    
-    if (roleType === 'admin') {
-      setEmail('admin@example.com');
-    } else if (roleType === 'manager') {
-      setEmail('alice@example.com');
-    } else {
-      setEmail('bob@example.com');
-    }
-    setPassword('••••••••');
-
-    setSuccess(`Bypassing auth as ${roleType.toUpperCase()}...`);
-    setTimeout(() => {
-      setRole(roleType);
-      navigate(`/${roleType}`);
-    }, 600);
   };
 
   return (
@@ -99,7 +76,7 @@ export function LoginPage() {
 
         {/* Alerts */}
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold flex items-center gap-2.5 animate-pulse">
+          <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold flex items-center gap-2.5">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -125,7 +102,8 @@ export function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-100 rounded-xl pl-10 pr-4 py-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all"
+                disabled={loading}
+                className="w-full text-xs font-semibold bg-slate-50 border border-slate-100 rounded-xl pl-10 pr-4 py-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all disabled:opacity-60"
               />
             </div>
           </div>
@@ -135,9 +113,9 @@ export function LoginPage() {
               <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">
                 Password
               </label>
-              <a href="#forgot" className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
+              <Link to="/forgot-password" className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
                 Forgot Password?
-              </a>
+              </Link>
             </div>
             <div className="relative">
               <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -147,7 +125,8 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-100 rounded-xl pl-10 pr-10 py-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all"
+                disabled={loading}
+                className="w-full text-xs font-semibold bg-slate-50 border border-slate-100 rounded-xl pl-10 pr-10 py-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all disabled:opacity-60"
               />
               <button
                 type="button"
@@ -161,10 +140,20 @@ export function LoginPage() {
 
           <button
             type="submit"
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-wider text-xs py-3 rounded-xl transition-all shadow-md shadow-indigo-600/15 flex items-center justify-center gap-1.5 cursor-pointer mt-2"
+            disabled={loading}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black uppercase tracking-wider text-xs py-3 rounded-xl transition-all shadow-md shadow-indigo-600/15 flex items-center justify-center gap-1.5 cursor-pointer mt-2"
           >
-            <span>Sign In</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            {loading ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Signing in...</span>
+              </>
+            ) : (
+              <>
+                <span>Sign In</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </>
+            )}
           </button>
         </form>
 
@@ -177,62 +166,6 @@ export function LoginPage() {
           >
             Register now
           </Link>
-        </div>
-
-        {/* Bypass buttons */}
-        <div className="mt-8 pt-6 border-t border-slate-100">
-          <div className="text-center mb-4">
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 bg-white px-2 py-0.5">
-              OR QUICK ACCESS DEMO ROLES
-            </span>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2.5">
-            <button
-              type="button"
-              onClick={() => handleQuickBypass('admin')}
-              className="group p-3 rounded-xl border border-slate-100 hover:border-violet-200 bg-slate-50/50 hover:bg-violet-50/20 text-center transition-all cursor-pointer"
-            >
-              <div className="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center mx-auto mb-1.5 group-hover:scale-105 transition-transform">
-                <Shield className="w-4 h-4" />
-              </div>
-              <span className="text-[10px] font-black text-slate-600 group-hover:text-violet-700 transition-colors uppercase tracking-tight block">
-                Admin
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickBypass('manager')}
-              className="group p-3 rounded-xl border border-slate-100 hover:border-indigo-200 bg-slate-50/50 hover:bg-indigo-50/20 text-center transition-all cursor-pointer"
-            >
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-1.5 group-hover:scale-105 transition-transform">
-                <Users className="w-4 h-4" />
-              </div>
-              <span className="text-[10px] font-black text-slate-600 group-hover:text-indigo-700 transition-colors uppercase tracking-tight block">
-                Manager
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickBypass('user')}
-              className="group p-3 rounded-xl border border-slate-100 hover:border-emerald-200 bg-slate-50/50 hover:bg-emerald-50/20 text-center transition-all cursor-pointer"
-            >
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-1.5 group-hover:scale-105 transition-transform">
-                <User className="w-4 h-4" />
-              </div>
-              <span className="text-[10px] font-black text-slate-600 group-hover:text-emerald-700 transition-colors uppercase tracking-tight block">
-                User
-              </span>
-            </button>
-          </div>
-
-          <div className="text-center mt-3.5">
-            <span className="text-[9px] font-semibold text-slate-400 block leading-tight">
-              Tip: Click any bypass button above for instant dashboard entry.
-            </span>
-          </div>
         </div>
       </div>
     </div>

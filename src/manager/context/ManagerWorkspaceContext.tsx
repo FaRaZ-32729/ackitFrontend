@@ -10,16 +10,16 @@ export interface ManagerWorkspaceProps {
   onTabChange?: (tab: string) => void;
   onSelectUnit: (id: string) => void;
   onTogglePower: (id: string) => void;
-  onAddUser: (user: Omit<UserAccount, 'id'>) => void;
-  onAddOrg: (org: Omit<Organization, 'id'>) => void;
-  onAddVenue: (venue: Omit<Venue, 'id'>) => void;
+  onAddUser: (user: Omit<UserAccount, 'id'>) => void | Promise<void | UserAccount>;
+  onAddOrg: (org: Omit<Organization, 'id'>) => void | Promise<void | Organization>;
+  onAddVenue: (venue: Omit<Venue, 'id'>) => void | Promise<void | Venue>;
   onAddDevice: (device: Omit<ACUnit, 'id'>) => void;
-  onDeleteUser: (id: string) => void;
-  onUpdateUser: (id: string, data: Partial<UserAccount>) => void;
-  onDeleteOrg: (id: string) => void;
-  onUpdateOrg: (id: string, data: Partial<Organization>) => void;
-  onDeleteVenue: (id: string) => void;
-  onUpdateVenue: (id: string, data: Partial<Venue>) => void;
+  onDeleteUser: (id: string) => void | Promise<void>;
+  onUpdateUser: (id: string, data: Partial<UserAccount>) => void | Promise<void>;
+  onDeleteOrg: (id: string) => void | Promise<void>;
+  onUpdateOrg: (id: string, data: Partial<Organization>) => void | Promise<void>;
+  onDeleteVenue: (id: string) => void | Promise<void>;
+  onUpdateVenue: (id: string, data: Partial<Venue>) => void | Promise<void>;
   onDeleteDevice: (id: string) => void;
   onUpdateDevice: (id: string, data: Partial<ACUnit>) => void;
 }
@@ -57,14 +57,14 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
   const [addUserStep, setAddUserStep] = useState<'details' | 'success'>('details');
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserStatus, setNewUserStatus] = useState<'active' | 'inactive'>('active');
+  const [newUserPermission, setNewUserPermission] = useState<'view' | 'manage'>('view');
+  const [newUserOrgs, setNewUserOrgs] = useState<string[]>([]);
   const [newUserVenues, setNewUserVenues] = useState<string[]>([]);
 
   // New Org Form State
   const [showAddOrg, setShowAddOrg] = useState(false);
   const [newOrgName, setNewOrgName] = useState('');
   const [newOrgAddress, setNewOrgAddress] = useState('');
-  const [newOrgDescription, setNewOrgDescription] = useState('');
 
   // New Venue Form State
   const [showAddVenue, setShowAddVenue] = useState(false);
@@ -238,21 +238,23 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
   const [eventOnOffAction, setEventOnOffAction] = useState<'ON' | 'OFF'>('ON');
   const [eventTime, setEventTime] = useState('08:00');
 
-  const handleAddUser = () => {
-    if (addUserStep === 'details') {
-      if (!newUserName || !newUserEmail) return;
-      setAddUserStep('success');
-      onAddUser({
-        name: newUserName,
-        email: newUserEmail,
-        status: 'pending',
-        assignedVenueIds: newUserVenues,
-        managerId: 'mgr-1', // Mock manager ID
-      });
-      setTimeout(() => {
-        closeAddUserModal();
-      }, 3000);
-    }
+  const handleAddUser = async () => {
+    if (addUserStep !== 'details') return;
+    if (!newUserName.trim() || !newUserEmail.trim() || newUserOrgs.length === 0) return;
+
+    await onAddUser({
+      name: newUserName.trim(),
+      email: newUserEmail.trim(),
+      status: 'pending',
+      assignedVenueIds: newUserVenues,
+      organizationIds: newUserOrgs,
+      permission: newUserPermission,
+      managerId: '',
+    });
+    setAddUserStep('success');
+    window.setTimeout(() => {
+      closeAddUserModal();
+    }, 3000);
   };
 
   const toggleUser = (id: string) => {
@@ -279,26 +281,28 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
       setAddUserStep('details');
       setNewUserName('');
       setNewUserEmail('');
+      setNewUserPermission('view');
+      setNewUserOrgs([]);
       setNewUserVenues([]);
     }, 300);
   };
 
-  const handleAddOrg = () => {
-    onAddOrg({
-      name: newOrgName,
-      address: newOrgAddress,
-      description: newOrgDescription,
-      managerId: 'mgr-1',
+  const handleAddOrg = async () => {
+    if (!newOrgName.trim()) return;
+    await onAddOrg({
+      name: newOrgName.trim(),
+      address: newOrgAddress.trim() || undefined,
+      managerId: '',
     });
     setShowAddOrg(false);
     setNewOrgName('');
     setNewOrgAddress('');
-    setNewOrgDescription('');
   };
 
-  const handleAddVenue = () => {
-    onAddVenue({
-      name: newVenueName,
+  const handleAddVenue = async () => {
+    if (!newVenueName.trim() || !newVenueOrgId) return;
+    await onAddVenue({
+      name: newVenueName.trim(),
       orgId: newVenueOrgId,
     });
     setShowAddVenue(false);
@@ -403,9 +407,9 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     onDeleteVenue, onUpdateVenue, onDeleteDevice, onUpdateDevice,
     showAddUser, setShowAddUser, addUserStep, setAddUserStep,
     newUserName, setNewUserName, newUserEmail, setNewUserEmail,
-    newUserStatus, setNewUserStatus, newUserVenues, setNewUserVenues,
+    newUserPermission, setNewUserPermission, newUserOrgs, setNewUserOrgs, newUserVenues, setNewUserVenues,
     showAddOrg, setShowAddOrg, newOrgName, setNewOrgName,
-    newOrgAddress, setNewOrgAddress, newOrgDescription, setNewOrgDescription,
+    newOrgAddress, setNewOrgAddress,
     showAddVenue, setShowAddVenue, newVenueName, setNewVenueName, newVenueOrgId, setNewVenueOrgId,
     showAddDevice, setShowAddDevice, newDeviceName, setNewDeviceName,
     newDeviceOrgId, setNewDeviceOrgId, newDeviceVenueId, setNewDeviceVenueId,

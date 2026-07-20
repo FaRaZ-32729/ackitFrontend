@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState } from 'react';
 import { ACUnit, ManagerAccount, Organization, SubscriptionPlan, UserAccount, Venue } from '../../types';
+import type { CreatePlanPayload } from '../../api/planApi';
+import axios from 'axios';
 
 export interface AdminWorkspaceProps {
   managers: ManagerAccount[];
@@ -10,9 +12,9 @@ export interface AdminWorkspaceProps {
   users: UserAccount[];
   activeTab: string;
   onTabChange?: (tab: string) => void;
-  onAddManager: (manager: Omit<ManagerAccount, 'id'>) => void;
+  onAddManager: (manager: { name: string; email: string }) => Promise<void>;
   onUpdateManagerPlan: (managerId: string, planId: string) => void;
-  onAddPlan: (plan: Omit<SubscriptionPlan, 'id'>) => void;
+  onAddPlan: (payload: CreatePlanPayload) => Promise<void>;
   onLogout?: () => void;
 }
 
@@ -179,6 +181,8 @@ function useAdminWorkspaceValue(props: AdminWorkspaceProps) {
   const [newManagerName, setNewManagerName] = useState('');
   const [newManagerEmail, setNewManagerEmail] = useState('');
   const [newManagerPlan, setNewManagerPlan] = useState(plans[0]?.id || '');
+  const [isCreatingManager, setIsCreatingManager] = useState(false);
+  const [createManagerError, setCreateManagerError] = useState('');
 
   // New Plan Form State
   const [newPlanName, setNewPlanName] = useState('');
@@ -186,24 +190,48 @@ function useAdminWorkspaceValue(props: AdminWorkspaceProps) {
   const [newPlanDescription, setNewPlanDescription] = useState('');
   const [newPlanPrice, setNewPlanPrice] = useState(0);
   const [newPlanDuration, setNewPlanDuration] = useState(30);
-  const [newPlanMaxOrgs, setNewPlanMaxOrgs] = useState(0);
-  const [newPlanMaxVenues, setNewPlanMaxVenues] = useState(0);
-  const [newPlanMaxDevices, setNewPlanMaxDevices] = useState(0);
-  const [newPlanMaxUsers, setNewPlanMaxUsers] = useState(0);
-  const [newPlanVisibility, setNewPlanVisibility] = useState<string[]>(['daily', 'monthly']);
+  const [newPlanMaxOrgs, setNewPlanMaxOrgs] = useState(1);
+  const [newPlanMaxVenues, setNewPlanMaxVenues] = useState(1);
+  const [newPlanMaxDevices, setNewPlanMaxDevices] = useState(1);
+  const [newPlanMaxUsers, setNewPlanMaxUsers] = useState(1);
+  const [newPlanAssignedEmail, setNewPlanAssignedEmail] = useState('');
+  const [isCreatingPlan, setIsCreatingPlan] = useState(false);
+  const [createPlanError, setCreatePlanError] = useState('');
 
-  const handleAddManager = () => {
-    if (!newManagerName || !newManagerEmail) return;
-    onAddManager({
-      name: newManagerName,
-      email: newManagerEmail,
-      status: 'pending',
-      planId: newManagerPlan,
-    });
-    setAddManagerStep('success');
-    setTimeout(() => {
-      closeAddManagerModal();
-    }, 2500);
+  const handleAddManager = async () => {
+    if (!newManagerName.trim()) {
+      setCreateManagerError('Manager name is required');
+      return;
+    }
+    if (!newManagerEmail.trim() || !newManagerEmail.includes('@')) {
+      setCreateManagerError('Enter a valid manager email address');
+      return;
+    }
+
+    setIsCreatingManager(true);
+    setCreateManagerError('');
+    try {
+      await onAddManager({
+        name: newManagerName.trim(),
+        email: newManagerEmail.trim().toLowerCase(),
+      });
+      setAddManagerStep('success');
+      setTimeout(() => {
+        closeAddManagerModal();
+      }, 2500);
+    } catch (err) {
+      let message = 'Failed to create manager';
+      if (axios.isAxiosError(err)) {
+        const data = err.response?.data as {
+          message?: string;
+          errors?: { message: string }[];
+        } | undefined;
+        message = data?.errors?.[0]?.message || data?.message || message;
+      }
+      setCreateManagerError(message);
+    } finally {
+      setIsCreatingManager(false);
+    }
   };
 
   const closeAddManagerModal = () => {
@@ -212,42 +240,76 @@ function useAdminWorkspaceValue(props: AdminWorkspaceProps) {
       setAddManagerStep('details');
       setNewManagerName('');
       setNewManagerEmail('');
+      setCreateManagerError('');
     }, 300);
   };
 
-  const handleAddPlan = () => {
-    if (!newPlanName) return;
-    onAddPlan({
-      name: newPlanName,
-      maxOrgs: newPlanMaxOrgs,
-      maxVenues: newPlanMaxVenues,
-      maxDevices: newPlanMaxDevices,
-      reportVisibility: newPlanVisibility as any,
-      planType: newPlanType,
-      description: newPlanDescription,
-      pricePkr: newPlanPrice,
-      durationDays: newPlanDuration,
-      maxUsers: newPlanMaxUsers,
-    });
-    setShowAddPlan(false);
-    
-    // Reset Form State
+  const resetPlanForm = () => {
     setNewPlanName('');
     setNewPlanType('basic');
     setNewPlanDescription('');
     setNewPlanPrice(0);
     setNewPlanDuration(30);
-    setNewPlanMaxOrgs(0);
-    setNewPlanMaxVenues(0);
-    setNewPlanMaxDevices(0);
-    setNewPlanMaxUsers(0);
-    setNewPlanVisibility(['daily', 'monthly']);
+    setNewPlanMaxOrgs(1);
+    setNewPlanMaxVenues(1);
+    setNewPlanMaxDevices(1);
+    setNewPlanMaxUsers(1);
+    setNewPlanAssignedEmail('');
+    setCreatePlanError('');
   };
 
-  const toggleVisibility = (v: string) => {
-    setNewPlanVisibility((prev) =>
-      prev.includes(v) ? prev.filter((item) => item !== v) : [...prev, v]
-    );
+  const handleAddPlan = async () => {
+    if (!newPlanName.trim()) {
+      setCreatePlanError('Plan name is required');
+      return;
+    }
+    if (newPlanType === 'custom' && !newPlanAssignedEmail.trim()) {
+      setCreatePlanError('Please select a manager to assign this custom plan');
+      return;
+    }
+
+    const durationDays = newPlanType === 'free' ? 15 : newPlanDuration;
+    const payload: CreatePlanPayload = {
+      name: newPlanName.trim(),
+      type: newPlanType,
+      price: Number(newPlanPrice) || 0,
+      durationDays: Number(durationDays),
+      maxOrganizations: Math.max(1, Number(newPlanMaxOrgs) || 1),
+      maxVenues: Math.max(1, Number(newPlanMaxVenues) || 1),
+      maxDevices: Math.max(1, Number(newPlanMaxDevices) || 1),
+      maxUsers: Math.max(1, Number(newPlanMaxUsers) || 1),
+    };
+
+    const desc = newPlanDescription.trim();
+    if (desc) payload.description = desc;
+    if (newPlanType === 'custom') {
+      payload.assignedToEmail = newPlanAssignedEmail.trim().toLowerCase();
+    }
+
+    setIsCreatingPlan(true);
+    setCreatePlanError('');
+    try {
+      await onAddPlan(payload);
+      setShowAddPlan(false);
+      resetPlanForm();
+    } catch (err) {
+      let message = 'Failed to create plan';
+      if (axios.isAxiosError(err)) {
+        const data = err.response?.data as { message?: string; errors?: { message: string }[] } | undefined;
+        message = data?.errors?.[0]?.message || data?.message || message;
+      } else if (err instanceof Error) {
+        message = err.message;
+      }
+      setCreatePlanError(message);
+    } finally {
+      setIsCreatingPlan(false);
+    }
+  };
+
+  const setNewPlanTypeAndDuration = (type: 'free' | 'basic' | 'premium' | 'custom') => {
+    setNewPlanType(type);
+    if (type === 'free') setNewPlanDuration(15);
+    setCreatePlanError('');
   };
 
   const toggleManager = (id: string) => {
@@ -286,8 +348,9 @@ function useAdminWorkspaceValue(props: AdminWorkspaceProps) {
     newManagerName, setNewManagerName,
     newManagerEmail, setNewManagerEmail,
     newManagerPlan, setNewManagerPlan,
+    isCreatingManager, createManagerError,
     newPlanName, setNewPlanName,
-    newPlanType, setNewPlanType,
+    newPlanType, setNewPlanType: setNewPlanTypeAndDuration,
     newPlanDescription, setNewPlanDescription,
     newPlanPrice, setNewPlanPrice,
     newPlanDuration, setNewPlanDuration,
@@ -295,9 +358,10 @@ function useAdminWorkspaceValue(props: AdminWorkspaceProps) {
     newPlanMaxVenues, setNewPlanMaxVenues,
     newPlanMaxDevices, setNewPlanMaxDevices,
     newPlanMaxUsers, setNewPlanMaxUsers,
-    newPlanVisibility, setNewPlanVisibility,
+    newPlanAssignedEmail, setNewPlanAssignedEmail,
+    isCreatingPlan, createPlanError, setCreatePlanError,
     handleAddManager, closeAddManagerModal, handleAddPlan,
-    toggleVisibility, toggleManager,
+    toggleManager,
     totalManagersCount, activeManagersCount, inactiveManagersCount,
   };
 }

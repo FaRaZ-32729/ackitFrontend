@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useManagerWorkspace } from '../context/ManagerWorkspaceContext';
-import { MapPin, Plus, Edit, Trash2, Search, Building2, MonitorSmartphone, Filter } from 'lucide-react';
+import { useAppContext } from '../../context/AppContext';
+import { MapPin, Edit, Trash2, Search, Building2, Filter, Loader2 } from 'lucide-react';
 import { CustomDropdown } from '../../components/ui/CustomDropdown';
+import axios from 'axios';
 
 /** Manager venues page — markup/CSS preserved from legacy ManagerView */
 export function VenuesPage() {
+  const { fetchMyVenues, venuesLoading, venuesError } = useAppContext();
   const {
     units, users, orgs, venues,
     onTabChange, onSelectUnit, onTogglePower,
@@ -13,9 +16,9 @@ export function VenuesPage() {
     onDeleteVenue, onUpdateVenue, onDeleteDevice, onUpdateDevice,
     showAddUser, setShowAddUser, addUserStep, setAddUserStep,
     newUserName, setNewUserName, newUserEmail, setNewUserEmail,
-    newUserStatus, setNewUserStatus, newUserVenues, setNewUserVenues,
+    newUserPermission, setNewUserPermission, newUserOrgs, setNewUserOrgs, newUserVenues, setNewUserVenues,
     showAddOrg, setShowAddOrg, newOrgName, setNewOrgName,
-    newOrgAddress, setNewOrgAddress, newOrgDescription, setNewOrgDescription,
+    newOrgAddress, setNewOrgAddress,
     showAddVenue, setShowAddVenue, newVenueName, setNewVenueName, newVenueOrgId, setNewVenueOrgId,
     showAddDevice, setShowAddDevice, newDeviceName, setNewDeviceName,
     newDeviceOrgId, setNewDeviceOrgId, newDeviceVenueId, setNewDeviceVenueId,
@@ -42,6 +45,42 @@ export function VenuesPage() {
     handleAddOrg, handleAddVenue, handleAddDevice, closeAddEventModal, handleAddEvent,
     toggleVenue, filteredManagedVenues, filteredManagedDevices,
   } = useManagerWorkspace();
+
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  useEffect(() => {
+    void fetchMyVenues().catch(() => {
+      // surfaced via venuesError
+    });
+  }, [fetchMyVenues]);
+
+  const handleCreateVenue = async () => {
+    const orgId = newVenueOrgId || orgs[0]?.id || '';
+    if (!newVenueName.trim() || !orgId || creating) return;
+    setCreating(true);
+    setCreateError('');
+    try {
+      await onAddVenue({
+        name: newVenueName.trim(),
+        orgId,
+      });
+      setNewVenueName('');
+      setNewVenueOrgId(orgs[0]?.id || '');
+    } catch (err) {
+      let message = 'Failed to create venue';
+      if (axios.isAxiosError(err)) {
+        const data = err.response?.data as {
+          message?: string;
+          errors?: { message: string }[];
+        } | undefined;
+        message = data?.errors?.[0]?.message || data?.message || message;
+      }
+      setCreateError(message);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <>
@@ -112,23 +151,28 @@ export function VenuesPage() {
                       </div>
                     </div>
       
-                    <div className="px-5 py-4 border-t border-slate-100 shrink-0">
+                    <div className="px-5 py-4 border-t border-slate-100 shrink-0 space-y-3">
+                      {createError && (
+                        <div className="p-2.5 bg-red-50 border border-red-100 rounded-xl text-red-600 text-[11px] font-semibold">
+                          {createError}
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
-                          const orgId = newVenueOrgId || orgs[0]?.id || '';
-                          if (!newVenueName.trim() || !orgId) return;
-                          onAddVenue({
-                            name: newVenueName.trim(),
-                            orgId,
-                          });
-                          setNewVenueName('');
-                          setNewVenueOrgId(orgs[0]?.id || '');
+                          void handleCreateVenue();
                         }}
-                        disabled={!newVenueName.trim() || !(newVenueOrgId || orgs[0]?.id)}
-                        className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={creating || !newVenueName.trim() || !(newVenueOrgId || orgs[0]?.id)}
+                        className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
-                        Create Venue
+                        {creating ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          'Create Venue'
+                        )}
                       </button>
                     </div>
                   </aside>
@@ -167,7 +211,17 @@ export function VenuesPage() {
                     </div>
       
                     <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
-                      {venues.length === 0 ? (
+                      {venuesError && (
+                        <div className="m-4 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold">
+                          {venuesError}
+                        </div>
+                      )}
+                      {venuesLoading && venues.length === 0 ? (
+                        <div className="h-full min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
+                          <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-3" />
+                          <span className="text-sm font-black text-slate-400 uppercase tracking-widest">Loading venues…</span>
+                        </div>
+                      ) : venues.length === 0 ? (
                         <div className="h-full min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
                           <MapPin className="w-12 h-12 text-slate-300 mb-3" />
                           <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Venues Found</span>
@@ -191,7 +245,7 @@ export function VenuesPage() {
                           </thead>
                           <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                             {filteredManagedVenues.map((venue) => {
-                              const orgName = orgs.find((o) => o.id === venue.orgId)?.name || '—';
+                              const orgName = orgs.find((o) => o.id === venue.orgId)?.name || venue.orgName || '—';
                               const deviceCount = units.filter((u) => u.venueId === venue.id).length;
                               return (
                                 <tr key={venue.id} className="hover:bg-slate-50/40 transition-colors">
@@ -247,7 +301,12 @@ export function VenuesPage() {
                 {/* Mobile / tablet: list only */}
                 <div className="lg:hidden flex-1 min-h-0 overflow-hidden bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col">
                   <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
-                    {venues.length === 0 ? (
+                    {venuesLoading && venues.length === 0 ? (
+                      <div className="flex-1 min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
+                        <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-3" />
+                        <span className="text-sm font-black text-slate-400 uppercase tracking-widest">Loading venues…</span>
+                      </div>
+                    ) : venues.length === 0 ? (
                       <div className="flex-1 min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
                         <MapPin className="w-12 h-12 text-slate-300 mb-3" />
                         <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Venues Found</span>

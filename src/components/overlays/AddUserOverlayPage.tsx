@@ -1,47 +1,49 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   X, 
   User, 
   Mail, 
-  UserCheck, 
   MapPin, 
+  Building2,
   CheckCircle2, 
   ArrowRight,
-  AlertCircle 
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
+import axios from 'axios';
 import { useAppContext } from '../../context/AppContext';
 import { CustomDropdown } from '../ui/CustomDropdown';
+import { MultiSelectDropdown } from '../ui/MultiSelectDropdown';
 
 interface AddUserOverlayPageProps {
   onClose: () => void;
 }
 
 export function AddUserOverlayPage({ onClose }: AddUserOverlayPageProps) {
-  const { setUsers, venues } = useAppContext();
+  const { createSubUser, orgs, venues } = useAppContext();
 
-  // Form State
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<'active' | 'inactive'>('active');
+  const [permission, setPermission] = useState<'view' | 'manage'>('view');
+  const [organizationIds, setOrganizationIds] = useState<string[]>([]);
   const [assignedVenueIds, setAssignedVenueIds] = useState<string[]>([]);
   
   const [error, setError] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const toggleVenueSelection = (venueId: string) => {
-    setAssignedVenueIds(prev => 
-      prev.includes(venueId) 
-        ? prev.filter(id => id !== venueId) 
-        : [...prev, venueId]
-    );
-  };
+  const venueOptions = useMemo(
+    () =>
+      venues
+        .filter((v) => organizationIds.includes(v.orgId))
+        .map((v) => ({ value: v.id, label: v.name })),
+    [venues, organizationIds]
+  );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    // Field Validation
     if (!name.trim()) {
       setError('Full Name is required');
       return;
@@ -50,40 +52,46 @@ export function AddUserOverlayPage({ onClose }: AddUserOverlayPageProps) {
       setError('Email address is required');
       return;
     }
-    // Basic email validation
     if (!/\S+@\S+\.\S+/.test(email)) {
       setError('Please provide a valid email address');
       return;
     }
+    if (organizationIds.length === 0) {
+      setError('Select at least one organization');
+      return;
+    }
 
     setIsSubmitting(true);
-
-    // Simulate saving delay
-    setTimeout(() => {
-      const newUser = {
-        id: `user-${Date.now()}`,
+    try {
+      await createSubUser({
         name: name.trim(),
         email: email.trim(),
-        status: status === 'active' ? 'active' : 'pending' as any, // Mock Pending Onboarding or Active status
-        assignedVenueIds,
-        managerId: 'mgr-1' // Mock central manager ID
-      };
-
-      setUsers(prev => [...prev, newUser]);
-      setIsSubmitting(false);
+        organizations: organizationIds,
+        venues: assignedVenueIds,
+        permission,
+      });
       setIsSuccess(true);
-
-      // Auto-close after 2 seconds
-      setTimeout(() => {
+      window.setTimeout(() => {
         onClose();
       }, 2000);
-    }, 800);
+    } catch (err) {
+      let message = 'Failed to create user';
+      if (axios.isAxiosError(err)) {
+        const data = err.response?.data as {
+          message?: string;
+          errors?: { message: string }[];
+        } | undefined;
+        message = data?.errors?.[0]?.message || data?.message || message;
+      }
+      setError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#f8fafc] overflow-hidden select-none animate-in fade-in slide-in-from-bottom-4 duration-300 px-5 pt-4 pb-6">
       
-      {/* Header Bar - Fixed at top */}
       <div className="flex items-center justify-between mb-4 shrink-0">
         <div>
           <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block mb-1">
@@ -104,7 +112,6 @@ export function AddUserOverlayPage({ onClose }: AddUserOverlayPageProps) {
       </div>
 
       {isSuccess ? (
-        /* SUCCESS STATE */
         <div className="flex-1 flex flex-col items-center justify-center py-10 px-4 text-center animate-in zoom-in-95 duration-300">
           <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-emerald-100 animate-bounce">
             <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
@@ -113,18 +120,15 @@ export function AddUserOverlayPage({ onClose }: AddUserOverlayPageProps) {
             User Created!
           </h2>
           <p className="text-xs text-slate-500 max-w-[240px] leading-relaxed font-semibold">
-            User Account <strong className="text-slate-800">{name}</strong> has been created.
+            Invite sent to <strong className="text-slate-800">{email}</strong>. They will appear as pending until onboarding is complete.
           </p>
         </div>
       ) : (
-        /* FORM ENTRY SCREEN */
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          
-          {/* Scrollable Fields Wrapper */}
-          <div className="flex-1 overflow-y-auto min-h-0 pr-1 pb-2 scrollbar-thin">
-            <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="min-h-full flex flex-col justify-center py-4 pr-1">
+              <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm space-y-5 w-full shrink-0">
               
-              {/* Error Callout */}
               {error && (
                 <div className="p-3 bg-red-50 border border-red-100 text-red-600 rounded-2xl text-xs font-bold flex items-center gap-2.5 animate-in fade-in slide-in-from-top-1">
                   <AlertCircle className="w-4 h-4 shrink-0" />
@@ -132,7 +136,6 @@ export function AddUserOverlayPage({ onClose }: AddUserOverlayPageProps) {
                 </div>
               )}
 
-              {/* Input: Full Name */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">
                   Full Name <span className="text-red-500">*</span>
@@ -141,88 +144,93 @@ export function AddUserOverlayPage({ onClose }: AddUserOverlayPageProps) {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Hammad Ahmed"
+                    placeholder="e.g. John Doe"
                     value={name}
-                    onChange={(e) => {
-                      setName(e.target.value);
-                      if (error) setError('');
-                    }}
-                    className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all placeholder:text-slate-400"
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={isSubmitting}
+                    className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all placeholder:text-slate-400 disabled:opacity-60"
                   />
                   <User className="w-4 h-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
 
-              {/* Input: Email Address */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">
-                  Email Address <span className="text-red-500">*</span>
+                  Email <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <input
                     type="email"
                     required
-                    placeholder="e.g. hammad@ssuet.edu.pk"
+                    placeholder="user@example.com"
                     value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      if (error) setError('');
-                    }}
-                    className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all placeholder:text-slate-400"
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={isSubmitting}
+                    className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all placeholder:text-slate-400 disabled:opacity-60"
                   />
                   <Mail className="w-4 h-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
 
-              {/* Input: Initial Onboarding Status */}
               <div className="space-y-1.5 min-w-0">
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                  Initial Status
+                  Organizations <span className="text-red-500">*</span>
                 </label>
-                <CustomDropdown
-                  value={status}
-                  onChange={(v) => setStatus(v as 'active' | 'inactive')}
-                  icon={UserCheck}
-                  options={[
-                    { value: 'active', label: 'Active Onboarded' },
-                    { value: 'inactive', label: 'Pending Invite' },
-                  ]}
+                <MultiSelectDropdown
+                  values={organizationIds}
+                  onChange={(ids) => {
+                    setOrganizationIds(ids);
+                    setAssignedVenueIds((prev) =>
+                      prev.filter((venueId) => {
+                        const venue = venues.find((v) => v.id === venueId);
+                        return venue ? ids.includes(venue.orgId) : false;
+                      })
+                    );
+                  }}
+                  icon={Building2}
+                  placeholder="Select organizations…"
+                  options={orgs.map((org) => ({ value: org.id, label: org.name }))}
+                  disabled={isSubmitting}
                 />
               </div>
 
-              {/* Input: Assign Venues */}
-              <div className="space-y-2 pt-1">
+              <div className="space-y-1.5 min-w-0">
                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                  Assign Venues Access
+                  Permission
                 </label>
-                <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1">
-                  {venues.map((venue) => {
-                    const isSelected = assignedVenueIds.includes(venue.id);
-                    return (
-                      <div
-                        key={venue.id}
-                        onClick={() => toggleVenueSelection(venue.id)}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl border cursor-pointer select-none transition-all ${
-                          isSelected
-                            ? 'bg-blue-50/50 border-blue-200 text-blue-700'
-                            : 'bg-slate-50/30 border-slate-100 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        <MapPin className={`w-4 h-4 shrink-0 ${isSelected ? 'text-blue-500' : 'text-slate-400'}`} />
-                        <span className="text-xs font-bold truncate">{venue.name}</span>
-                      </div>
-                    );
-                  })}
-                  {venues.length === 0 && (
-                    <p className="text-[10px] text-slate-400 font-semibold italic">No venues defined to assign.</p>
-                  )}
-                </div>
+                <CustomDropdown
+                  value={permission}
+                  onChange={(v) => setPermission(v as 'view' | 'manage')}
+                  options={[
+                    { value: 'view', label: 'View' },
+                    { value: 'manage', label: 'Manage' },
+                  ]}
+                  disabled={isSubmitting}
+                />
               </div>
 
+              <div className="space-y-1.5 min-w-0">
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                  Assign Venues
+                </label>
+                <MultiSelectDropdown
+                  values={assignedVenueIds}
+                  onChange={setAssignedVenueIds}
+                  icon={MapPin}
+                  placeholder={
+                    organizationIds.length === 0
+                      ? 'Select organizations first…'
+                      : 'Select venues…'
+                  }
+                  options={venueOptions}
+                  disabled={isSubmitting || organizationIds.length === 0}
+                />
+              </div>
+
+              </div>
             </div>
           </div>
 
-          {/* Action Buttons Row */}
           <div className="pt-4 grid grid-cols-2 gap-4 shrink-0 border-t border-slate-100/50 bg-[#f8fafc]">
             <button
               type="button"
@@ -235,11 +243,11 @@ export function AddUserOverlayPage({ onClose }: AddUserOverlayPageProps) {
             
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !name.trim() || !email.trim() || organizationIds.length === 0}
               className="py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider rounded-full text-center flex items-center justify-center gap-2 shadow-lg shadow-blue-600/10 transition-all active:scale-95 disabled:opacity-50"
             >
               {isSubmitting ? (
-                <div className="w-4.5 h-4.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <Loader2 className="w-4.5 h-4.5 animate-spin" />
               ) : (
                 <>
                   <span>Save User</span>

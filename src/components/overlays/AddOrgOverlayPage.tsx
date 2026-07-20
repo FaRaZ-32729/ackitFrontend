@@ -5,8 +5,10 @@ import {
   MapPin, 
   CheckCircle2, 
   ArrowRight,
-  AlertCircle 
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
+import axios from 'axios';
 import { useAppContext } from '../../context/AppContext';
 
 interface AddOrgOverlayPageProps {
@@ -14,7 +16,7 @@ interface AddOrgOverlayPageProps {
 }
 
 export function AddOrgOverlayPage({ onClose }: AddOrgOverlayPageProps) {
-  const { setOrgs } = useAppContext();
+  const { createOrganization } = useAppContext();
   
   // Form State
   const [name, setName] = useState('');
@@ -23,36 +25,40 @@ export function AddOrgOverlayPage({ onClose }: AddOrgOverlayPageProps) {
   const [isSuccess, setIsSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    // Field Validation
     if (!name.trim()) {
       setError('Organization Name is required');
       return;
     }
 
+    if (name.trim().length < 3) {
+      setError('Organization name must be at least 3 characters');
+      return;
+    }
+
     setIsSubmitting(true);
-
-    // Simulate saving delay for rich UX feedback
-    setTimeout(() => {
-      const newOrg = {
-        id: `org-${Date.now()}`,
-        name: name.trim(),
-        address: address.trim() || undefined,
-        managerId: 'mgr-1' // Mock default manager
-      };
-
-      setOrgs(prev => [...prev, newOrg]);
-      setIsSubmitting(false);
+    try {
+      await createOrganization(name.trim(), address.trim() || undefined);
       setIsSuccess(true);
-
-      // Auto-close after 2 seconds
-      setTimeout(() => {
+      window.setTimeout(() => {
         onClose();
       }, 2000);
-    }, 800);
+    } catch (err) {
+      let message = 'Failed to create organization';
+      if (axios.isAxiosError(err)) {
+        const data = err.response?.data as {
+          message?: string;
+          errors?: { message: string }[];
+        } | undefined;
+        message = data?.errors?.[0]?.message || data?.message || message;
+      }
+      setError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -119,58 +125,50 @@ export function AddOrgOverlayPage({ onClose }: AddOrgOverlayPageProps) {
                     required
                     placeholder="e.g. Sir Syed University"
                     value={name}
-                    onChange={(e) => {
-                      setName(e.target.value);
-                      if (error) setError('');
-                    }}
-                    className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all placeholder:text-slate-400"
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={isSubmitting}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-11 pr-4 py-3.5 text-sm font-bold text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:opacity-60"
                   />
-                  <Building2 className="w-4 h-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 </div>
               </div>
 
               {/* Input: Address */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                  Address
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1">
+                  Address <span className="text-slate-300 font-bold normal-case tracking-normal">(Optional)</span>
                 </label>
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="e.g. Block 4, Gulshan-e-Iqbal, Karachi"
+                    placeholder="Optional street / city"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    className="w-full bg-slate-50/50 text-slate-800 text-xs font-bold pl-4 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:outline-none focus:border-blue-500 focus:bg-white shadow-inner transition-all placeholder:text-slate-400"
+                    disabled={isSubmitting}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-11 pr-4 py-3.5 text-sm font-bold text-slate-800 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:opacity-60"
                   />
-                  <MapPin className="w-4 h-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 </div>
               </div>
-
               </div>
             </div>
           </div>
 
-          {/* Action Buttons Row */}
-          <div className="pt-4 grid grid-cols-2 gap-4 shrink-0 border-t border-slate-100/50 bg-[#f8fafc]">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="py-3.5 px-4 bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-black uppercase tracking-wider rounded-full text-center transition-all active:scale-95 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            
+          {/* Sticky Action */}
+          <div className="shrink-0 pt-4">
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider rounded-full text-center flex items-center justify-center gap-2 shadow-lg shadow-blue-600/10 transition-all active:scale-95 disabled:opacity-50"
+              disabled={isSubmitting || !name.trim()}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black uppercase tracking-wider text-xs py-4 rounded-2xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
             >
               {isSubmitting ? (
-                <div className="w-4.5 h-4.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Creating...
+                </>
               ) : (
                 <>
-                  <span>Save Org</span>
+                  Create Organization
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -178,7 +176,6 @@ export function AddOrgOverlayPage({ onClose }: AddOrgOverlayPageProps) {
           </div>
         </form>
       )}
-
     </div>
   );
 }

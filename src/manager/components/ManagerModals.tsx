@@ -2,7 +2,7 @@ import React from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { CustomDropdown } from '../../components/ui/CustomDropdown';
 import { MultiSelectDropdown } from '../../components/ui/MultiSelectDropdown';
-import { CheckCircle2, AlertTriangle, MapPin, MonitorSmartphone, Activity } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, MapPin, MonitorSmartphone, Activity, Building2 } from 'lucide-react';
 import { AC_BRANDS } from '../constants';
 import { useManagerWorkspace } from '../context/ManagerWorkspaceContext';
 
@@ -16,9 +16,9 @@ export function ManagerModals() {
     onDeleteVenue, onUpdateVenue, onDeleteDevice, onUpdateDevice,
     showAddUser, setShowAddUser, addUserStep, setAddUserStep,
     newUserName, setNewUserName, newUserEmail, setNewUserEmail,
-    newUserStatus, setNewUserStatus, newUserVenues, setNewUserVenues,
+    newUserPermission, setNewUserPermission, newUserOrgs, setNewUserOrgs, newUserVenues, setNewUserVenues,
     showAddOrg, setShowAddOrg, newOrgName, setNewOrgName,
-    newOrgAddress, setNewOrgAddress, newOrgDescription, setNewOrgDescription,
+    newOrgAddress, setNewOrgAddress,
     showAddVenue, setShowAddVenue, newVenueName, setNewVenueName, newVenueOrgId, setNewVenueOrgId,
     showAddDevice, setShowAddDevice, newDeviceName, setNewDeviceName,
     newDeviceOrgId, setNewDeviceOrgId, newDeviceVenueId, setNewDeviceVenueId,
@@ -182,16 +182,34 @@ export function ManagerModals() {
                         placeholder="user@example.com"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                      <select
-                        value={newUserStatus}
-                        onChange={(e) => setNewUserStatus(e.target.value as any)}
-                        className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                      >
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                      </select>
+                    <div className="min-w-0">
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Organizations <span className="text-red-500">*</span></label>
+                      <MultiSelectDropdown
+                        values={newUserOrgs}
+                        onChange={(ids) => {
+                          setNewUserOrgs(ids);
+                          setNewUserVenues((prev) =>
+                            prev.filter((venueId) => {
+                              const venue = venues.find((v) => v.id === venueId);
+                              return venue ? ids.includes(venue.orgId) : false;
+                            })
+                          );
+                        }}
+                        icon={Building2}
+                        placeholder="Select organizations…"
+                        options={orgs.map((o) => ({ value: o.id, label: o.name }))}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Permission</label>
+                      <CustomDropdown
+                        value={newUserPermission}
+                        onChange={(v) => setNewUserPermission(v as 'view' | 'manage')}
+                        options={[
+                          { value: 'view', label: 'View' },
+                          { value: 'manage', label: 'Manage' },
+                        ]}
+                      />
                     </div>
                     <div className="min-w-0">
                       <label className="block text-sm font-medium text-slate-700 mb-2">Assign Venues</label>
@@ -199,8 +217,11 @@ export function ManagerModals() {
                         values={newUserVenues}
                         onChange={setNewUserVenues}
                         icon={MapPin}
-                        placeholder="Select venues…"
-                        options={venues.map((v) => ({ value: v.id, label: v.name }))}
+                        placeholder={newUserOrgs.length === 0 ? 'Select organizations first…' : 'Select venues…'}
+                        options={venues
+                          .filter((v) => newUserOrgs.includes(v.orgId))
+                          .map((v) => ({ value: v.id, label: v.name }))}
+                        disabled={newUserOrgs.length === 0}
                       />
                     </div>
                     <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
@@ -211,8 +232,16 @@ export function ManagerModals() {
                         Cancel
                       </button>
                       <button
-                        onClick={handleAddUser}
-                        disabled={!newUserName || !newUserEmail}
+                        onClick={() => {
+                          void (async () => {
+                            try {
+                              await handleAddUser();
+                            } catch {
+                              // Keep modal open so user can retry
+                            }
+                          })();
+                        }}
+                        disabled={!newUserName || !newUserEmail || newUserOrgs.length === 0}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Create
@@ -259,15 +288,6 @@ export function ManagerModals() {
                     onChange={(e) => setNewOrgAddress(e.target.value)}
                     className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                     placeholder="123 Business St, City"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Description (Optional)</label>
-                  <textarea
-                    value={newOrgDescription}
-                    onChange={(e) => setNewOrgDescription(e.target.value)}
-                    className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none min-h-[80px]"
-                    placeholder="Brief description of the organization"
                   />
                 </div>
                 <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
@@ -324,8 +344,17 @@ export function ManagerModals() {
                     Cancel
                   </button>
                   <button
-                    onClick={handleAddVenue}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          await handleAddVenue();
+                        } catch {
+                          // Keep modal open so user can retry
+                        }
+                      })();
+                    }}
+                    disabled={!newVenueName.trim() || !newVenueOrgId}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
                   >
                     Save Venue
                   </button>
@@ -449,8 +478,8 @@ export function ManagerModals() {
                     <input
                       type="text"
                       value={editingUser.name}
-                      onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
-                      className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      disabled
+                      className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-500 outline-none"
                     />
                   </div>
                   <div>
@@ -458,20 +487,42 @@ export function ManagerModals() {
                     <input
                       type="email"
                       value={editingUser.email}
-                      onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
-                      className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      disabled
+                      className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-500 outline-none"
                     />
                   </div>
                   <div className="min-w-0">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Organizations <span className="text-red-500">*</span></label>
+                    <MultiSelectDropdown
+                      values={editingUser.organizationIds || []}
+                      onChange={(ids) =>
+                        setEditingUser({
+                          ...editingUser,
+                          organizationIds: ids,
+                          assignedVenueIds: editingUser.assignedVenueIds.filter((venueId) => {
+                            const venue = venues.find((v) => v.id === venueId);
+                            return venue ? ids.includes(venue.orgId) : false;
+                          }),
+                        })
+                      }
+                      icon={Building2}
+                      placeholder="Select organizations…"
+                      options={orgs.map((o) => ({ value: o.id, label: o.name }))}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Permission</label>
                     <CustomDropdown
-                      desktopNative
-                      value={editingUser.status}
-                      onChange={(v) => setEditingUser({ ...editingUser, status: v as any })}
+                      value={editingUser.permission || 'view'}
+                      onChange={(v) =>
+                        setEditingUser({
+                          ...editingUser,
+                          permission: v as 'view' | 'manage',
+                        })
+                      }
                       options={[
-                        { value: 'active', label: 'Active' },
-                        { value: 'inactive', label: 'Inactive' },
-                        { value: 'pending', label: 'Pending' },
+                        { value: 'view', label: 'View' },
+                        { value: 'manage', label: 'Manage' },
                       ]}
                     />
                   </div>
@@ -481,8 +532,15 @@ export function ManagerModals() {
                       values={editingUser.assignedVenueIds}
                       onChange={(ids) => setEditingUser({ ...editingUser, assignedVenueIds: ids })}
                       icon={MapPin}
-                      placeholder="Select venues…"
-                      options={venues.map((v) => ({ value: v.id, label: v.name }))}
+                      placeholder={
+                        !(editingUser.organizationIds && editingUser.organizationIds.length > 0)
+                          ? 'Select organizations first…'
+                          : 'Select venues…'
+                      }
+                      options={venues
+                        .filter((v) => (editingUser.organizationIds || []).includes(v.orgId))
+                        .map((v) => ({ value: v.id, label: v.name }))}
+                      disabled={!(editingUser.organizationIds && editingUser.organizationIds.length > 0)}
                     />
                   </div>
                   <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
@@ -494,10 +552,20 @@ export function ManagerModals() {
                     </button>
                     <button
                       onClick={() => {
-                        onUpdateUser(editingUser.id, editingUser);
-                        setEditingUser(null);
+                        void (async () => {
+                          try {
+                            if (!(editingUser.organizationIds && editingUser.organizationIds.length > 0)) {
+                              return;
+                            }
+                            await onUpdateUser(editingUser.id, editingUser);
+                            setEditingUser(null);
+                          } catch {
+                            // Keep modal open so user can retry
+                          }
+                        })();
                       }}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                      disabled={!(editingUser.organizationIds && editingUser.organizationIds.length > 0)}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
                     >
                       Update User
                     </button>
@@ -541,8 +609,14 @@ export function ManagerModals() {
                     </button>
                     <button
                       onClick={() => {
-                        onUpdateOrg(editingOrg.id, editingOrg);
-                        setEditingOrg(null);
+                        void (async () => {
+                          try {
+                            await onUpdateOrg(editingOrg.id, editingOrg);
+                            setEditingOrg(null);
+                          } catch {
+                            // Keep modal open so user can retry
+                          }
+                        })();
                       }}
                       disabled={!editingOrg.name}
                       className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
@@ -574,9 +648,10 @@ export function ManagerModals() {
                   <div className="min-w-0">
                     <label className="block text-sm font-medium text-slate-700 mb-1">Organization</label>
                     <CustomDropdown
-                      desktopNative
                       value={editingVenue.orgId}
                       onChange={(v) => setEditingVenue({ ...editingVenue, orgId: v })}
+                      icon={Building2}
+                      placeholder="Select organization…"
                       options={orgs.map((o) => ({ value: o.id, label: o.name }))}
                     />
                   </div>
@@ -589,10 +664,17 @@ export function ManagerModals() {
                     </button>
                     <button
                       onClick={() => {
-                        onUpdateVenue(editingVenue.id, editingVenue);
-                        setEditingVenue(null);
+                        void (async () => {
+                          try {
+                            await onUpdateVenue(editingVenue.id, editingVenue);
+                            setEditingVenue(null);
+                          } catch {
+                            // Keep modal open so user can retry
+                          }
+                        })();
                       }}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                      disabled={!editingVenue.name}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
                     >
                       Update Venue
                     </button>
@@ -716,14 +798,20 @@ export function ManagerModals() {
                   </button>
                   <button
                     onClick={() => {
-                      if (deletingId && deleteType) {
-                        if (deleteType === 'user') onDeleteUser(deletingId);
-                        else if (deleteType === 'org') onDeleteOrg(deletingId);
-                        else if (deleteType === 'venue') onDeleteVenue(deletingId);
-                        else if (deleteType === 'device') onDeleteDevice(deletingId);
-                      }
-                      setDeletingId(null);
-                      setDeleteType(null);
+                      void (async () => {
+                        if (deletingId && deleteType) {
+                          try {
+                            if (deleteType === 'user') await onDeleteUser(deletingId);
+                            else if (deleteType === 'org') await onDeleteOrg(deletingId);
+                            else if (deleteType === 'venue') await onDeleteVenue(deletingId);
+                            else if (deleteType === 'device') onDeleteDevice(deletingId);
+                            setDeletingId(null);
+                            setDeleteType(null);
+                          } catch {
+                            // Keep confirm open on failure
+                          }
+                        }
+                      })();
                     }}
                     className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors shadow-sm"
                   >

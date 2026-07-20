@@ -1,9 +1,26 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAdminWorkspace } from '../context/AdminWorkspaceContext';
-import { Users, Building2, MapPin, MonitorSmartphone, Plus, Check, ChevronRight, ShieldAlert } from 'lucide-react';
+import { Users, Building2, MapPin, MonitorSmartphone, Plus, Check, ChevronRight, ShieldAlert, Loader2, Edit, Trash2, AlertTriangle } from 'lucide-react';
+import { useAppContext } from '../../context/AppContext';
+import { Modal } from '../../components/ui/Modal';
+import { CustomDropdown } from '../../components/ui/CustomDropdown';
+import axios from 'axios';
 
 /** Admin managers page — markup/CSS preserved from legacy AdminView */
 export function ManagersPage() {
+  const {
+    fetchManagers,
+    managersLoading,
+    managersError,
+    fetchPlans,
+    fetchUsersByManager,
+    fetchAllOrganizations,
+    fetchAllVenues,
+    usersLoading,
+    usersError,
+    suspendManager,
+    deleteManager,
+  } = useAppContext();
   const {
     managers, plans, orgs, venues, units, users, activeTab, onTabChange,
     onAddManager, onUpdateManagerPlan, onAddPlan, onLogout,
@@ -40,11 +57,92 @@ export function ManagersPage() {
     newPlanMaxVenues, setNewPlanMaxVenues,
     newPlanMaxDevices, setNewPlanMaxDevices,
     newPlanMaxUsers, setNewPlanMaxUsers,
-    newPlanVisibility, setNewPlanVisibility,
     handleAddManager, closeAddManagerModal, handleAddPlan,
-    toggleVisibility, toggleManager,
+    toggleManager,
     totalManagersCount, activeManagersCount, inactiveManagersCount,
   } = useAdminWorkspace();
+
+  const [showDeleteManager, setShowDeleteManager] = useState(false);
+  const [showEditStatus, setShowEditStatus] = useState(false);
+  const [editStatus, setEditStatus] = useState<'active' | 'inactive'>('active');
+  const [suspensionReason, setSuspensionReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
+
+  useEffect(() => {
+    void Promise.allSettled([fetchManagers(), fetchPlans()]);
+  }, [fetchManagers, fetchPlans]);
+
+  useEffect(() => {
+    if (!selectedManagerId) return;
+    void Promise.allSettled([
+      fetchUsersByManager(selectedManagerId),
+      fetchAllOrganizations(),
+      fetchAllVenues(),
+    ]);
+  }, [
+    selectedManagerId,
+    fetchUsersByManager,
+    fetchAllOrganizations,
+    fetchAllVenues,
+  ]);
+
+  const openEditStatus = () => {
+    const manager = managers.find((m) => m.id === selectedManagerId);
+    if (!manager) return;
+    setEditStatus(manager.status === 'active' ? 'active' : 'inactive');
+    setSuspensionReason('');
+    setActionError('');
+    setShowEditStatus(true);
+  };
+
+  const handleSaveStatus = async () => {
+    if (!selectedManagerId) return;
+    if (editStatus === 'inactive' && !suspensionReason.trim()) {
+      setActionError('Suspension reason is required when deactivating a manager');
+      return;
+    }
+    setActionLoading(true);
+    setActionError('');
+    try {
+      await suspendManager(
+        selectedManagerId,
+        editStatus === 'active',
+        editStatus === 'inactive' ? suspensionReason.trim() : undefined
+      );
+      setShowEditStatus(false);
+      setSuspensionReason('');
+    } catch (err) {
+      let message = 'Failed to update manager status';
+      if (axios.isAxiosError(err)) {
+        const data = err.response?.data as { message?: string } | undefined;
+        message = data?.message || message;
+      }
+      setActionError(message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!selectedManagerId) return;
+    setActionLoading(true);
+    setActionError('');
+    try {
+      await deleteManager(selectedManagerId);
+      setShowDeleteManager(false);
+      setSelectedManagerId(null);
+    } catch (err) {
+      let message = 'Failed to delete manager';
+      if (axios.isAxiosError(err)) {
+        const data = err.response?.data as { message?: string } | undefined;
+        message = data?.message || message;
+      }
+      setActionError(message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   return (
     <>
@@ -77,7 +175,7 @@ export function ManagersPage() {
                               <div className="w-14 h-14 rounded-full bg-indigo-50 border border-indigo-100/50 flex items-center justify-center text-indigo-600 text-lg font-bold">
                                 {selectedManager.name ? selectedManager.name.slice(0, 2).toUpperCase() : 'M'}
                               </div>
-                              <div className="space-y-1">
+                              <div className="space-y-1 flex-1 min-w-0">
                                 <h4 className="text-lg font-black text-slate-800">{selectedManager.name}</h4>
                                 <p className="text-sm text-slate-400 font-semibold">{selectedManager.email}</p>
                                 <div className="flex gap-2 mt-2">
@@ -95,6 +193,27 @@ export function ManagersPage() {
                                     {selectedManager.status === 'pending' ? 'Pending' : selectedManager.status}
                                   </span>
                                 </div>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={openEditStatus}
+                                  className="p-2.5 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"
+                                  title="Edit status"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActionError('');
+                                    setShowDeleteManager(true);
+                                  }}
+                                  className="p-2.5 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                                  title="Delete manager"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               </div>
                             </div>
       
@@ -195,6 +314,11 @@ export function ManagersPage() {
                             <div className="mt-4">
                               {managerDetailTab === 'sub-users' && (
                                 <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-x-auto">
+                                  {usersError && (
+                                    <div className="m-4 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold">
+                                      {usersError}
+                                    </div>
+                                  )}
                                   <table className="w-full text-left border-collapse min-w-[700px]">
                                     <thead>
                                       <tr className="border-b border-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-50/50">
@@ -208,9 +332,24 @@ export function ManagersPage() {
                                       </tr>
                                     </thead>
                                     <tbody>
+                                      {usersLoading && selectedManagerUsers.length === 0 && (
+                                        <tr>
+                                          <td colSpan={7} className="py-8 text-center">
+                                            <div className="inline-flex items-center gap-2 text-slate-400 text-sm font-medium">
+                                              <Loader2 className="w-4 h-4 animate-spin" />
+                                              Loading sub-users…
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      )}
                                       {selectedManagerUsers.map((u) => {
                                         const userVenues = venues.filter((v) => u.assignedVenueIds?.includes(v.id));
-                                        const userOrgs = orgs.filter((o) => userVenues.some((v) => v.orgId === o.id));
+                                        const userOrgCount =
+                                          u.organizationIds?.length ||
+                                          orgs.filter((o) =>
+                                            (u.organizationIds || []).includes(o.id) ||
+                                            userVenues.some((v) => v.orgId === o.id)
+                                          ).length;
                                         const initials = u.name ? u.name.slice(0, 2).toUpperCase() : 'U';
                                         return (
                                           <tr key={u.id} className="border-b border-slate-50 hover:bg-slate-50/40 transition-colors">
@@ -227,22 +366,34 @@ export function ManagersPage() {
                                             </td>
                                             <td className="py-4 px-4">
                                               <span className="px-2 py-0.5 bg-indigo-50/50 border border-indigo-100/30 text-indigo-600 rounded-md text-[10px] font-black uppercase tracking-wider">
-                                                manage
+                                                user
                                               </span>
                                             </td>
                                             <td className="py-4 px-4 text-sm font-bold text-slate-800">
-                                              {userOrgs.length}
+                                              {userOrgCount}
                                             </td>
                                             <td className="py-4 px-4 text-sm font-bold text-slate-800">
-                                              {userVenues.length}
+                                              {u.assignedVenueIds?.length || userVenues.length}
                                             </td>
                                             <td className="py-4 px-4 text-sm font-bold text-slate-800">
                                               {units.filter((unit) => u.assignedVenueIds?.includes(unit.venueId)).length}
                                             </td>
                                             <td className="py-4 px-4">
-                                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-emerald-100 bg-emerald-50 text-emerald-700 capitalize">
-                                                <span className="w-1 h-1 rounded-full bg-emerald-500" />
-                                                Active
+                                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border capitalize ${
+                                                u.status === 'active'
+                                                  ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                                  : u.status === 'pending'
+                                                    ? 'border-amber-100 bg-amber-50 text-amber-700'
+                                                    : 'border-slate-100 bg-slate-50 text-slate-500'
+                                              }`}>
+                                                <span className={`w-1 h-1 rounded-full ${
+                                                  u.status === 'active'
+                                                    ? 'bg-emerald-500'
+                                                    : u.status === 'pending'
+                                                      ? 'bg-amber-500'
+                                                      : 'bg-slate-400'
+                                                }`} />
+                                                {u.status === 'pending' ? 'Pending' : u.status}
                                               </span>
                                             </td>
                                             <td className="py-4 px-4 text-right text-slate-400">
@@ -251,7 +402,7 @@ export function ManagersPage() {
                                           </tr>
                                         );
                                       })}
-                                      {selectedManagerUsers.length === 0 && (
+                                      {!usersLoading && selectedManagerUsers.length === 0 && (
                                         <tr>
                                           <td colSpan={7} className="py-8 text-center text-sm font-medium text-slate-400">
                                             No sub-users registered under this manager.
@@ -463,6 +614,12 @@ export function ManagersPage() {
                               Add Manager
                             </button>
                           </div>
+
+                          {managersError && (
+                            <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold">
+                              {managersError}
+                            </div>
+                          )}
       
                           {/* Table list */}
                           <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-x-auto">
@@ -479,6 +636,23 @@ export function ManagersPage() {
                                 </tr>
                               </thead>
                               <tbody>
+                                {managersLoading && managers.length === 0 && (
+                                  <tr>
+                                    <td colSpan={7} className="py-12 text-center">
+                                      <span className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400">
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Loading managers...
+                                      </span>
+                                    </td>
+                                  </tr>
+                                )}
+                                {!managersLoading && managers.length === 0 && (
+                                  <tr>
+                                    <td colSpan={7} className="py-12 text-center text-xs font-semibold text-slate-400">
+                                      No managers found
+                                    </td>
+                                  </tr>
+                                )}
                                 {managers.map((manager) => {
                                   const managerOrgs = orgs.filter((o) => o.managerId === manager.id);
                                   const managerVenues = venues.filter((v) => managerOrgs.some((o) => o.id === v.orgId));
@@ -581,6 +755,144 @@ export function ManagersPage() {
                       );
                     })()}
                   </div>
+
+      <Modal
+        isOpen={showEditStatus}
+        onClose={() => {
+          if (actionLoading) return;
+          setShowEditStatus(false);
+          setActionError('');
+          setSuspensionReason('');
+        }}
+        title="Edit Manager Status"
+      >
+        <div className="space-y-4">
+          <div className="min-w-0">
+            <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+            <CustomDropdown
+              value={editStatus}
+              onChange={(v) => {
+                setEditStatus(v as 'active' | 'inactive');
+                setActionError('');
+                if (v === 'active') setSuspensionReason('');
+              }}
+              options={[
+                { value: 'active', label: 'Active' },
+                { value: 'inactive', label: 'Inactive' },
+              ]}
+            />
+          </div>
+
+          {editStatus === 'inactive' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Suspension Reason <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={suspensionReason}
+                onChange={(e) => setSuspensionReason(e.target.value)}
+                rows={3}
+                placeholder="Explain why this manager is being deactivated…"
+                className="w-full p-2.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+              />
+            </div>
+          )}
+
+          {actionError && (
+            <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold">
+              {actionError}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+            <button
+              type="button"
+              disabled={actionLoading}
+              onClick={() => {
+                setShowEditStatus(false);
+                setActionError('');
+                setSuspensionReason('');
+              }}
+              className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={actionLoading || (editStatus === 'inactive' && !suspensionReason.trim())}
+              onClick={() => {
+                void handleSaveStatus();
+              }}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
+            >
+              {actionLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Status'
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showDeleteManager}
+        onClose={() => {
+          if (actionLoading) return;
+          setShowDeleteManager(false);
+          setActionError('');
+        }}
+        title="Delete Manager"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 text-amber-700 bg-amber-50 p-4 rounded-xl border border-amber-100">
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+            <p className="text-sm font-medium">
+              Are you sure you want to delete this manager? This will also remove their organizations, venues, devices, and sub-users. This action cannot be undone.
+            </p>
+          </div>
+
+          {actionError && (
+            <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold">
+              {actionError}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+            <button
+              type="button"
+              disabled={actionLoading}
+              onClick={() => {
+                setShowDeleteManager(false);
+                setActionError('');
+              }}
+              className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={actionLoading}
+              onClick={() => {
+                void handleConfirmDelete();
+              }}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
+            >
+              {actionLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Manager'
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }

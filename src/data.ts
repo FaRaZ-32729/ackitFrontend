@@ -47,14 +47,12 @@ export const mockOrgs: Organization[] = [
     name: 'SSUET_AS', 
     managerId: 'mgr-1',
     address: 'SSUET Campus, University Road, Karachi',
-    description: 'Sir Syed University of Engineering and Technology central climate control.'
   },
   { 
     id: 'org-2', 
     name: 'IoTFIY_HQ', 
     managerId: 'mgr-1',
     address: 'IoTFIY Innovation Hub, Block 4, Karachi',
-    description: 'IoTFIY Corporate Headquarters and R&D Lab climate control.'
   },
 ];
 

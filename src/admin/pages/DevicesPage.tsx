@@ -40,9 +40,8 @@ export function DevicesPage() {
     newPlanMaxVenues, setNewPlanMaxVenues,
     newPlanMaxDevices, setNewPlanMaxDevices,
     newPlanMaxUsers, setNewPlanMaxUsers,
-    newPlanVisibility, setNewPlanVisibility,
     handleAddManager, closeAddManagerModal, handleAddPlan,
-    toggleVisibility, toggleManager,
+    toggleManager,
     totalManagersCount, activeManagersCount, inactiveManagersCount,
   } = useAdminWorkspace();
 

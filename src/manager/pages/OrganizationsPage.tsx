@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useManagerWorkspace } from '../context/ManagerWorkspaceContext';
-import { Building2, Plus, Edit, Trash2, MapPin } from 'lucide-react';
+import { useAppContext } from '../../context/AppContext';
+import { Building2, Plus, Edit, Trash2, MapPin, Loader2 } from 'lucide-react';
+import axios from 'axios';
 
 /** Manager organizations page — markup/CSS preserved from legacy ManagerView */
 export function OrganizationsPage() {
+  const { fetchMyOrganizations, orgsLoading, orgsError, user } = useAppContext();
   const {
     units, users, orgs, venues,
     onTabChange, onSelectUnit, onTogglePower,
@@ -12,9 +15,9 @@ export function OrganizationsPage() {
     onDeleteVenue, onUpdateVenue, onDeleteDevice, onUpdateDevice,
     showAddUser, setShowAddUser, addUserStep, setAddUserStep,
     newUserName, setNewUserName, newUserEmail, setNewUserEmail,
-    newUserStatus, setNewUserStatus, newUserVenues, setNewUserVenues,
+    newUserPermission, setNewUserPermission, newUserOrgs, setNewUserOrgs, newUserVenues, setNewUserVenues,
     showAddOrg, setShowAddOrg, newOrgName, setNewOrgName,
-    newOrgAddress, setNewOrgAddress, newOrgDescription, setNewOrgDescription,
+    newOrgAddress, setNewOrgAddress,
     showAddVenue, setShowAddVenue, newVenueName, setNewVenueName, newVenueOrgId, setNewVenueOrgId,
     showAddDevice, setShowAddDevice, newDeviceName, setNewDeviceName,
     newDeviceOrgId, setNewDeviceOrgId, newDeviceVenueId, setNewDeviceVenueId,
@@ -41,6 +44,42 @@ export function OrganizationsPage() {
     handleAddOrg, handleAddVenue, handleAddDevice, closeAddEventModal, handleAddEvent,
     toggleVenue, filteredManagedVenues, filteredManagedDevices,
   } = useManagerWorkspace();
+
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  useEffect(() => {
+    void fetchMyOrganizations().catch(() => {
+      // surfaced via orgsError
+    });
+  }, [fetchMyOrganizations]);
+
+  const handleCreateOrganization = async () => {
+    if (!newOrgName.trim() || creating) return;
+    setCreating(true);
+    setCreateError('');
+    try {
+      await onAddOrg({
+        name: newOrgName.trim(),
+        address: newOrgAddress.trim() || undefined,
+        managerId: user?.id || '',
+      });
+      setNewOrgName('');
+      setNewOrgAddress('');
+    } catch (err) {
+      let message = 'Failed to create organization';
+      if (axios.isAxiosError(err)) {
+        const data = err.response?.data as {
+          message?: string;
+          errors?: { message: string }[];
+        } | undefined;
+        message = data?.errors?.[0]?.message || data?.message || message;
+      }
+      setCreateError(message);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <>
@@ -85,40 +124,28 @@ export function OrganizationsPage() {
                           placeholder="Optional address"
                         />
                       </div>
-      
-                      <div className="space-y-1.5 min-w-0">
-                        <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
-                          Description
-                        </label>
-                        <input
-                          type="text"
-                          value={newOrgDescription}
-                          onChange={(e) => setNewOrgDescription(e.target.value)}
-                          className="w-full min-w-0 p-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                          placeholder="Optional description"
-                        />
-                      </div>
                     </div>
       
-                    <div className="px-5 py-4 border-t border-slate-100 shrink-0">
+                    <div className="px-5 py-4 border-t border-slate-100 shrink-0 space-y-3">
+                      {createError && (
+                        <div className="p-2.5 bg-red-50 border border-red-100 rounded-xl text-red-600 text-[11px] font-semibold">
+                          {createError}
+                        </div>
+                      )}
                       <button
                         type="button"
-                        onClick={() => {
-                          if (!newOrgName.trim()) return;
-                          onAddOrg({
-                            name: newOrgName.trim(),
-                            address: newOrgAddress.trim() || undefined,
-                            description: newOrgDescription.trim() || undefined,
-                            managerId: 'mgr-1',
-                          });
-                          setNewOrgName('');
-                          setNewOrgAddress('');
-                          setNewOrgDescription('');
-                        }}
-                        disabled={!newOrgName.trim()}
-                        className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => void handleCreateOrganization()}
+                        disabled={!newOrgName.trim() || creating}
+                        className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                       >
-                        Create Organization
+                        {creating ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          'Create Organization'
+                        )}
                       </button>
                     </div>
                   </aside>
@@ -132,7 +159,17 @@ export function OrganizationsPage() {
                     </div>
       
                     <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
-                      {orgs.length === 0 ? (
+                      {orgsError && (
+                        <div className="m-4 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold">
+                          {orgsError}
+                        </div>
+                      )}
+                      {orgsLoading && orgs.length === 0 ? (
+                        <div className="h-full min-h-[12rem] flex items-center justify-center gap-2 text-slate-400 text-sm font-semibold">
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Loading organizations...
+                        </div>
+                      ) : orgs.length === 0 ? (
                         <div className="h-full min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
                           <Building2 className="w-12 h-12 text-slate-300 mb-3" />
                           <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Organizations Found</span>

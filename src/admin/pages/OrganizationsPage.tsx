@@ -1,50 +1,29 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAdminWorkspace } from '../context/AdminWorkspaceContext';
-import { Building2, MapPin, MonitorSmartphone } from 'lucide-react';
+import { useAppContext } from '../../context/AppContext';
+import { Building2, MapPin, MonitorSmartphone, Loader2 } from 'lucide-react';
 
 /** Admin organizations page — markup/CSS preserved from legacy AdminView */
 export function OrganizationsPage() {
   const {
-    managers, plans, orgs, venues, units, users, activeTab, onTabChange,
-    onAddManager, onUpdateManagerPlan, onAddPlan, onLogout,
-    currentTab, setCurrentTab,
-    managementDropdownOpen, setManagementDropdownOpen,
-    mobileSidebarOpen, setMobileSidebarOpen,
-    expandedManagerId, setExpandedManagerId,
-    selectedManagerId, setSelectedManagerId,
-    managerDetailTab, setManagerDetailTab,
-    selectedOtaVersion, setSelectedOtaVersion,
-    otaVersions, setOtaVersions,
-    deviceSearchQuery, setDeviceSearchQuery,
-    selectedDeviceIds, setSelectedDeviceIds,
-    uploadVersionId, setUploadVersionId,
-    uploadFile, setUploadFile,
-    isUploading, setIsUploading,
-    uploadProgress, setUploadProgress,
-    otaStatus, setOtaStatus,
-    otaProgress, setOtaProgress,
-    onlineDevices, setOnlineDevices,
-    handleStartOta, handleUploadFirmware,
-    showAddManager, setShowAddManager,
-    addManagerStep, setAddManagerStep,
-    showAddPlan, setShowAddPlan,
-    newManagerName, setNewManagerName,
-    newManagerEmail, setNewManagerEmail,
-    newManagerPlan, setNewManagerPlan,
-    newPlanName, setNewPlanName,
-    newPlanType, setNewPlanType,
-    newPlanDescription, setNewPlanDescription,
-    newPlanPrice, setNewPlanPrice,
-    newPlanDuration, setNewPlanDuration,
-    newPlanMaxOrgs, setNewPlanMaxOrgs,
-    newPlanMaxVenues, setNewPlanMaxVenues,
-    newPlanMaxDevices, setNewPlanMaxDevices,
-    newPlanMaxUsers, setNewPlanMaxUsers,
-    newPlanVisibility, setNewPlanVisibility,
-    handleAddManager, closeAddManagerModal, handleAddPlan,
-    toggleVisibility, toggleManager,
-    totalManagersCount, activeManagersCount, inactiveManagersCount,
+    fetchAllOrganizations,
+    fetchAllVenues,
+    fetchManagers,
+    orgsLoading,
+    orgsError,
+  } = useAppContext();
+
+  const {
+    managers, orgs, venues, units,
   } = useAdminWorkspace();
+
+  useEffect(() => {
+    void Promise.allSettled([
+      fetchAllOrganizations(),
+      fetchAllVenues(),
+      fetchManagers(),
+    ]);
+  }, [fetchAllOrganizations, fetchAllVenues, fetchManagers]);
 
   return (
     <>
@@ -89,6 +68,12 @@ export function OrganizationsPage() {
                       <h3 className="text-sm font-black text-slate-800 tracking-wide uppercase">All organizations</h3>
                       <p className="text-xs text-slate-400 font-semibold mt-0.5">Every organization across all managers on the platform</p>
                     </div>
+
+                    {orgsError && (
+                      <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold">
+                        {orgsError}
+                      </div>
+                    )}
       
                     <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-x-auto">
                       <table className="w-full text-left border-collapse min-w-[700px]">
@@ -101,6 +86,23 @@ export function OrganizationsPage() {
                           </tr>
                         </thead>
                         <tbody>
+                          {orgsLoading && orgs.length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="py-12 text-center">
+                                <span className="inline-flex items-center gap-2 text-xs font-semibold text-slate-400">
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  Loading organizations...
+                                </span>
+                              </td>
+                            </tr>
+                          )}
+                          {!orgsLoading && orgs.length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="py-12 text-center text-xs font-semibold text-slate-400">
+                                No organizations found
+                              </td>
+                            </tr>
+                          )}
                           {orgs.map((org) => {
                             const m = managers.find((mgr) => mgr.id === org.managerId);
                             const orgVenues = venues.filter((v) => v.orgId === org.id);
@@ -112,10 +114,10 @@ export function OrganizationsPage() {
                                 </td>
                                 <td className="py-4 px-4">
                                   <span className="text-sm font-bold text-slate-800 block">
-                                    {m ? m.name : 'Unknown Manager'}
+                                    {m?.name || org.ownerName || 'Unknown Manager'}
                                   </span>
                                   <span className="text-[11px] text-slate-400 font-semibold block mt-0.5">
-                                    {m ? m.email : 'No email'}
+                                    {m?.email || org.ownerEmail || 'No email'}
                                   </span>
                                 </td>
                                 <td className="py-4 px-4 text-sm font-bold text-slate-800">
