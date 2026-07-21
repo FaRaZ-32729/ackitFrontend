@@ -5,10 +5,9 @@ import { UserLayout } from '../UserLayout';
 import { UserDashboardPage } from './UserDashboardPage';
 import { UserReportsPage } from './UserReportsPage';
 import { UserDevicesPage } from './UserDevicesPage';
-import { UserAcBrandsPage } from './UserAcBrandsPage';
 import type { UserAccount } from '../../types';
 
-const VALID_TABS = ['dashboard', 'reports', 'devices', 'ac-brands'] as const;
+const VALID_TABS = ['dashboard', 'reports', 'devices'] as const;
 type UserTab = (typeof VALID_TABS)[number];
 
 function UserTabContent({ tab }: { tab: UserTab }) {
@@ -19,8 +18,6 @@ function UserTabContent({ tab }: { tab: UserTab }) {
       return <UserReportsPage />;
     case 'devices':
       return <UserDevicesPage />;
-    case 'ac-brands':
-      return <UserAcBrandsPage />;
     default:
       return null;
   }

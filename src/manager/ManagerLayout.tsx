@@ -18,8 +18,7 @@ function ManagerLayoutInner({ children }: { children: React.ReactNode }) {
         activeTab === 'venues' ||
         activeTab === 'users' ||
         activeTab === 'devices' ||
-        activeTab === 'reports' ||
-        activeTab === 'ac-brands'
+        activeTab === 'reports'
           ? 'max-w-none h-full flex flex-col overflow-hidden px-0 py-0 space-y-0'
           : 'max-w-6xl mx-auto p-6 space-y-8'
       }`}

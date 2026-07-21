@@ -23,7 +23,6 @@ export function Sidebar({ role, activeTab, onTabChange, onLogout, isOpen, onClos
     { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'reports', label: 'Reports', icon: Activity },
-    { id: 'ac-brands', label: 'AC Brand Management', icon: Cpu },
     { id: 'users', label: 'User Management', icon: Users },
     { id: 'organizations', label: 'Organizations', icon: Building2 },
     { id: 'venues', label: 'Venues', icon: MapPin },
@@ -33,7 +32,6 @@ export function Sidebar({ role, activeTab, onTabChange, onLogout, isOpen, onClos
   const userTabs = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'reports', label: 'Reports', icon: Activity },
-    { id: 'ac-brands', label: 'AC Brand Management', icon: Cpu },
     { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
   ];
 

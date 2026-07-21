@@ -18,7 +18,6 @@ import {
   Activity, 
   ShieldAlert,
   BarChart3,
-  Cpu,
   LayoutDashboard
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -234,25 +233,6 @@ export function ConsoleLayout() {
                             <Activity className="w-4 h-4" />
                             Energy Report
                           </button>
-                        </>
-                      )}
-
-                      {(role === 'manager' || role === 'user') && (
-                        <>
-                          <button
-                            onClick={() => {
-                              setShowProfileMenu(false);
-                              handleTabClick('ac-brands');
-                            }}
-                            className={`w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-600 font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-colors cursor-pointer ${
-                              activeTab === 'ac-brands' ? 'bg-blue-50/50 text-blue-600' : ''
-                            }`}
-                          >
-                            <Cpu className="w-4 h-4" />
-                            Brand Management
-                          </button>
-
-                          <div className="border-t border-slate-100 my-1" />
                         </>
                       )}
 

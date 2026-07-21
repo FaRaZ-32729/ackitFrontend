@@ -5,7 +5,6 @@ import { ManagerLayout } from '../ManagerLayout';
 import { OverviewPage } from './OverviewPage';
 import { DashboardPage } from './DashboardPage';
 import { ReportsPage } from './ReportsPage';
-import { AcBrandsPage } from './AcBrandsPage';
 import { UsersPage } from './UsersPage';
 import { OrganizationsPage } from './OrganizationsPage';
 import { VenuesPage } from './VenuesPage';
@@ -15,7 +14,6 @@ const VALID_TABS = [
   'overview',
   'dashboard',
   'reports',
-  'ac-brands',
   'users',
   'organizations',
   'venues',
@@ -32,8 +30,6 @@ function ManagerTabContent({ tab }: { tab: ManagerTab }) {
       return <DashboardPage />;
     case 'reports':
       return <ReportsPage />;
-    case 'ac-brands':
-      return <AcBrandsPage />;
     case 'users':
       return <UsersPage />;
     case 'organizations':

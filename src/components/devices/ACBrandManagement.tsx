@@ -1,383 +1,404 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Cpu, Trash2, Edit2, Play, Check, Copy, Wifi, 
-  WifiOff, Power, RefreshCw, Layers, Plus, Info, X, Zap,
-  Snowflake, Sun, Droplets, Wind, Sparkles, ChevronRight, Gauge, Fan
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Cpu, Trash2, Check, Power, RefreshCw, Layers, Plus, X, Send,
+  Snowflake, Sun, Droplets, Sparkles, Fan
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import {
+  createConfigureId,
+  selectBrandCommand,
+  clearBrandCommand,
+  saveBrand,
+  applyBrandCommand,
+  getAllBrands,
+  deleteBrand,
+  mapApiBrandToSignals,
+  type ApiBrand,
+  type BrandSignalsPayload,
+} from '../../api/brandApi';
+import {
+  getBrandSocket,
+  joinBrandConfigureRoom,
+  leaveBrandConfigureRoom,
+} from '../../api/brandSocket';
 
-// Data model for simplified remote-decoder brands
 export interface DecodedBrand {
   id: string;
   name: string;
-  deviceId: string;
-  apiKey: string;
+  configureId: string;
   status: 'connected' | 'disconnected';
-  // Decoded signals mapped (stores simulated hex codes or null if untrained)
-  signals: {
-    powerOn: string | null;
-    powerOff: string | null;
-    temperatures: Record<number, string | null>; // Dynamic temperature codes
-    fanSpeeds: {
-      low: string | null;
-      medium: string | null;
-      high: string | null;
-      ultra: string | null;
-      turbo: string | null;
-    };
-    modes: {
-      cool: string | null;
-      heat: string | null;
-      dry: string | null;
-      fan: string | null;
-      auto: string | null;
-    };
+  signals: BrandSignalsPayload;
+}
+
+const ALL_TEMPERATURES = Array.from({ length: 15 }, (_, i) => i + 16); // 16°C – 30°C
+
+const TEMP_C_BY_WORD: Record<string, number> = {
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+  twenty: 20,
+  twentyOne: 21,
+  twentyTwo: 22,
+  twentyThree: 23,
+  twentyFour: 24,
+  twentyFive: 25,
+  twentySix: 26,
+  twentySeven: 27,
+  twentyEight: 28,
+  twentyNine: 29,
+  thirty: 30,
+};
+
+function emptyTemperatureMap(): Record<number, string | null> {
+  return Object.fromEntries(ALL_TEMPERATURES.map((temp) => [temp, null]));
+}
+
+function emptySignals(): BrandSignalsPayload {
+  return {
+    powerOn: null,
+    powerOff: null,
+    temperatures: emptyTemperatureMap(),
+    fanSpeeds: { low: null, medium: null, high: null, ultra: null, turbo: null },
+    modes: { cool: null, heat: null, dry: null, fan: null, auto: null },
   };
 }
 
-const PRESET_BRANDS: DecodedBrand[] = [
-  {
-    id: 'brand-1',
-    name: 'Daikin Smart IoT',
-    deviceId: 'DEV-DAI-8821',
-    apiKey: 'CSK-DAI-9012-TRK56YK',
-    status: 'connected',
-    signals: {
-      powerOn: '0x11FA80A2',
-      powerOff: '0x11FA80A3',
-      temperatures: {
-        16: '0x11FA16C4', 17: '0x11FA17C4', 18: '0x11FA18C4', 19: '0x11FA19C4',
-        20: '0x11FA20C4', 21: '0x11FA21C4', 22: '0x11FA22C4'
-      },
-      fanSpeeds: {
-        low: '0x11FA01F2', medium: '0x11FA02F2', high: '0x11FA03F2', ultra: null, turbo: null
-      },
-      modes: {
-        cool: '0x11FAM01C', heat: '0x11FAM02C', dry: null, fan: null, auto: null
-      }
-    }
-  },
-  {
-    id: 'brand-2',
-    name: 'LG DualInverter Lab',
-    deviceId: 'DEV-LG-4402',
-    apiKey: 'CSK-LGE-2911-TRK90PX',
+function mapApiBrand(brand: ApiBrand): DecodedBrand {
+  return {
+    id: brand._id,
+    name: brand.brandName,
+    configureId: brand.configureId,
     status: 'disconnected',
-    signals: {
-      powerOn: '0x88BC01A2',
-      powerOff: '0x88BC01A3',
-      temperatures: {
-        16: '0x88BC16E1', 17: '0x88BC17E1', 18: '0x88BC18E1'
-      },
-      fanSpeeds: {
-        low: null, medium: null, high: null, ultra: null, turbo: null
-      },
-      modes: {
-        cool: null, heat: null, dry: null, fan: null, auto: null
-      }
-    }
+    signals: mapApiBrandToSignals(brand),
+  };
+}
+
+function formatPulsePreview(value: string | null | undefined) {
+  if (!value) return '';
+  if (value.length <= 28) return value;
+  return `${value.slice(0, 12)}…${value.slice(-10)}`;
+}
+
+type TrainingTarget = {
+  type: 'powerOn' | 'powerOff' | 'temperature' | 'fanSpeed' | 'mode';
+  key?: number | string;
+  label: string;
+  command: string;
+};
+
+function toCommandPath(type: TrainingTarget['type'], key?: number | string): string {
+  if (type === 'powerOn') return 'power.on';
+  if (type === 'powerOff') return 'power.off';
+  if (type === 'temperature') return `temp.${key}`;
+  if (type === 'fanSpeed') return `fan.${key}`;
+  if (type === 'mode') return `mode.${key}`;
+  return '';
+}
+
+function applyCapturedField(
+  prev: BrandSignalsPayload,
+  field: { group: string; key: string },
+  value: string
+): BrandSignalsPayload {
+  const next = { ...prev };
+
+  if (field.group === 'powerCommands') {
+    if (field.key === 'on') next.powerOn = value;
+    if (field.key === 'off') next.powerOff = value;
+    return next;
   }
-];
+
+  if (field.group === 'modes') {
+    const modeKey =
+      field.key === 'fanOnly' ? 'fan' : field.key === 'smartAuto' ? 'auto' : field.key;
+    next.modes = { ...next.modes, [modeKey as keyof typeof next.modes]: value };
+    return next;
+  }
+
+  if (field.group === 'temperatureCommands') {
+    const c = TEMP_C_BY_WORD[field.key];
+    if (c) {
+      next.temperatures = { ...next.temperatures, [c]: value };
+    }
+    return next;
+  }
+
+  if (field.group === 'fanSpeedCommands') {
+    next.fanSpeeds = {
+      ...next.fanSpeeds,
+      [field.key as keyof typeof next.fanSpeeds]: value,
+    };
+  }
+
+  return next;
+}
 
 export function ACBrandManagement() {
-  // Store all brands in local storage or fallback to preset
-  const [brands, setBrands] = useState<DecodedBrand[]>(() => {
-    const cached = localStorage.getItem('iotfiy_decoded_brands');
-    return cached ? JSON.parse(cached) : PRESET_BRANDS;
-  });
+  const [brands, setBrands] = useState<DecodedBrand[]>([]);
+  const [loadingBrands, setLoadingBrands] = useState(true);
+  const [isConfiguring, setIsConfiguring] = useState(false);
 
-  // Editing state - if null, we are in "Add Brand" mode
   const [editingBrandId, setEditingBrandId] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<'power-modes' | 'temperatures' | 'fans'>('power-modes');
 
-  // Form Field States
   const [formName, setFormName] = useState('');
-  const [formDeviceId, setFormDeviceId] = useState('');
-  const [formApiKey, setFormApiKey] = useState('');
+  const [formConfigureId, setFormConfigureId] = useState('');
   const [isDeviceConnected, setIsDeviceConnected] = useState(false);
 
-  // Temperatures to display (initially only 4 temperatures to fit perfectly on a single row)
-  const [visibleTemps, setVisibleTemps] = useState<number[]>([16, 17, 18, 19]);
-  const [showAddTempInput, setShowAddTempInput] = useState(false);
-  const [newTempText, setNewTempText] = useState('');
+  const [signals, setSignals] = useState<BrandSignalsPayload>(emptySignals());
+  const [trainingTarget, setTrainingTarget] = useState<TrainingTarget | null>(null);
 
-  // Active remote signals map state
-  const [signals, setSignals] = useState<DecodedBrand['signals']>({
-    powerOn: null,
-    powerOff: null,
-    temperatures: {
-      16: null, 17: null, 18: null, 19: null
-    },
-    fanSpeeds: { low: null, medium: null, high: null, ultra: null, turbo: null },
-    modes: { cool: null, heat: null, dry: null, fan: null, auto: null }
-  });
-
-  // Interactive "Decoder Training Mode" state
-  const [trainingTarget, setTrainingTarget] = useState<{
-    type: 'powerOn' | 'powerOff' | 'temperature' | 'fanSpeed' | 'mode';
-    key?: number | string;
-    label: string;
-  } | null>(null);
-
-  // Feedback states
-  const [copiedKey, setCopiedKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Auto save to local storage
-  useEffect(() => {
-    localStorage.setItem('iotfiy_decoded_brands', JSON.stringify(brands));
-  }, [brands]);
-
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
+  }, []);
+
+  const loadBrands = useCallback(async () => {
+    try {
+      setLoadingBrands(true);
+      const list = await getAllBrands();
+      setBrands(list.map(mapApiBrand));
+    } catch (error: any) {
+      showToast(error?.response?.data?.message || error?.message || 'Failed to load brands', 'error');
+    } finally {
+      setLoadingBrands(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    loadBrands();
+  }, [loadBrands]);
+
+  // Socket listeners for active configure session
+  useEffect(() => {
+    if (!formConfigureId) return;
+
+    const socket = getBrandSocket();
+    joinBrandConfigureRoom(formConfigureId);
+
+    const onDeviceConnected = (payload: { configureId: string }) => {
+      if (payload.configureId !== formConfigureId) return;
+      setIsDeviceConnected(true);
+      showToast('IR receiver connected via MQTT', 'success');
+    };
+
+    const onIrCaptured = (payload: {
+      configureId: string;
+      field: { group: string; key: string };
+      value: string;
+    }) => {
+      if (payload.configureId !== formConfigureId) return;
+      setSignals((prev) => applyCapturedField(prev, payload.field, payload.value));
+      setTrainingTarget(null);
+      showToast(`IR pulse saved for ${payload.field.group}.${payload.field.key}`, 'success');
+    };
+
+    const onIrIgnored = (payload: { configureId: string; reason?: string }) => {
+      if (payload.configureId !== formConfigureId) return;
+      showToast(payload.reason || 'IR pulse ignored', 'info');
+    };
+
+    socket.on('brand:device-connected', onDeviceConnected);
+    socket.on('brand:ir-captured', onIrCaptured);
+    socket.on('brand:ir-ignored', onIrIgnored);
+
+    return () => {
+      socket.off('brand:device-connected', onDeviceConnected);
+      socket.off('brand:ir-captured', onIrCaptured);
+      socket.off('brand:ir-ignored', onIrIgnored);
+      leaveBrandConfigureRoom(formConfigureId);
+    };
+  }, [formConfigureId, showToast]);
+
+  const handleConfigureDevice = async () => {
+    try {
+      setIsConfiguring(true);
+      if (formConfigureId) {
+        leaveBrandConfigureRoom(formConfigureId);
+      }
+
+      const configureId = await createConfigureId();
+      setFormConfigureId(configureId);
+      setIsDeviceConnected(false);
+      setSignals(emptySignals());
+      joinBrandConfigureRoom(configureId);
+      showToast(`Pairing code ${configureId} ready — flash/use it on the ESP`, 'info');
+    } catch (error: any) {
+      showToast(error?.response?.data?.message || error?.message || 'Configure failed', 'error');
+    } finally {
+      setIsConfiguring(false);
+    }
   };
 
-  // Helper to generate a realistic random IR key on connect
-  const generateApiKey = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let p1 = '';
-    let p2 = '';
-    for (let i = 0; i < 14; i++) {
-      p1 += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    for (let i = 0; i < 11; i++) {
-      p2 += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return `CSK${p1}-2T9TRG${p2}`;
-  };
-
-  // Connect / Configure device action
-  const handleConfigureDevice = () => {
-    if (!formDeviceId.trim()) {
-      showToast('Please enter a valid Device ID first', 'error');
-      return;
-    }
-    // Simulate finding & connecting to the receiver module
-    setIsDeviceConnected(true);
-    if (!formApiKey) {
-      setFormApiKey(generateApiKey());
-    }
-    showToast(`Connected to receiver ${formDeviceId}! Ready to decode.`, 'success');
-  };
-
-  // Reset/Clear Form for Adding a new Brand
   const handleResetForm = () => {
+    if (formConfigureId) {
+      leaveBrandConfigureRoom(formConfigureId);
+    }
     setEditingBrandId(null);
     setActiveSubTab('power-modes');
     setFormName('');
-    setFormDeviceId('');
-    setFormApiKey('');
+    setFormConfigureId('');
     setIsDeviceConnected(false);
-    setVisibleTemps([16, 17, 18, 19]);
-    setShowAddTempInput(false);
-    setNewTempText('');
-    setSignals({
-      powerOn: null,
-      powerOff: null,
-      temperatures: {
-        16: null, 17: null, 18: null, 19: null
-      },
-      fanSpeeds: { low: null, medium: null, high: null, ultra: null, turbo: null },
-      modes: { cool: null, heat: null, dry: null, fan: null, auto: null }
-    });
-  };
-
-  // Populate form with existing brand data for editing
-  const handleEditBrand = (brand: DecodedBrand) => {
-    setEditingBrandId(brand.id);
-    setActiveSubTab('power-modes');
-    setFormName(brand.name);
-    setFormDeviceId(brand.deviceId);
-    setFormApiKey(brand.apiKey);
-    setIsDeviceConnected(brand.status === 'connected');
-    
-    // Setup temperatures
-    const brandTempKeys = Object.keys(brand.signals.temperatures || {}).map(Number);
-    const uniqueTemps = Array.from(new Set([16, 17, 18, 19, ...brandTempKeys])).sort((a, b) => a - b);
-    setVisibleTemps(uniqueTemps);
-    setShowAddTempInput(false);
-
-    setSignals(JSON.parse(JSON.stringify(brand.signals))); // Deep copy
-    showToast(`Loaded remote profile for ${brand.name}`, 'info');
-  };
-
-  // Delete brand
-  const handleDeleteBrand = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setBrands(prev => prev.filter(b => b.id !== id));
-    showToast('Brand decoder profile removed', 'info');
-    if (editingBrandId === id) {
-      handleResetForm();
-    }
-  };
-
-  // Copy API key
-  const handleCopyKey = () => {
-    if (!formApiKey) return;
-    navigator.clipboard.writeText(formApiKey);
-    setCopiedKey(true);
-    showToast('API Key copied to clipboard!', 'success');
-    setTimeout(() => setCopiedKey(false), 2000);
-  };
-
-  // Add Custom Temperature Mode
-  const handleAddCustomTemp = () => {
-    const tempNum = parseInt(newTempText, 10);
-    if (isNaN(tempNum) || tempNum < 15 || tempNum > 35) {
-      showToast('Please enter a valid temperature between 15°C and 35°C', 'error');
-      return;
-    }
-    if (visibleTemps.includes(tempNum)) {
-      showToast(`${tempNum}°C is already visible!`, 'info');
-      return;
-    }
-
-    const updatedTemps = [...visibleTemps, tempNum].sort((a, b) => a - b);
-    setVisibleTemps(updatedTemps);
-
-    // Initialize in signals
-    setSignals(prev => ({
-      ...prev,
-      temperatures: {
-        ...prev.temperatures,
-        [tempNum]: prev.temperatures[tempNum] || null
-      }
-    }));
-
-    showToast(`Added ${tempNum}°C mode. Ready for signal training.`, 'success');
-    setNewTempText('');
-    setShowAddTempInput(false);
-
-    // Immediately start training for this new temperature!
-    startTraining('temperature', tempNum, `${tempNum}°C Command`);
-  };
-
-  // Start Training process
-  const startTraining = (type: typeof trainingTarget['type'], key?: number | string, label?: string) => {
-    if (!isDeviceConnected) {
-      showToast('Connect your IR receiver first by clicking "Configure"!', 'error');
-      return;
-    }
-    setTrainingTarget({
-      type,
-      key,
-      label: label || `${type} Command`
-    });
-  };
-
-  // Simulate receiving IR signal
-  const simulateIRReceive = () => {
-    if (!trainingTarget) return;
-
-    // Generate random mock IR code
-    const mockCodes = ['0x11FA', '0x88BC', '0x22F4', '0x33A1', '0x77CE'];
-    const prefix = mockCodes[Math.floor(Math.random() * mockCodes.length)];
-    const hexSuffix = Math.floor(Math.random() * 65535).toString(16).toUpperCase().padStart(4, '0');
-    const finalHex = `${prefix}${hexSuffix}`;
-
-    const { type, key } = trainingTarget;
-
-    setSignals(prev => {
-      const updated = { ...prev };
-      if (type === 'powerOn') {
-        updated.powerOn = finalHex;
-      } else if (type === 'powerOff') {
-        updated.powerOff = finalHex;
-      } else if (type === 'temperature' && typeof key === 'number') {
-        updated.temperatures = {
-          ...updated.temperatures,
-          [key]: finalHex
-        };
-      } else if (type === 'fanSpeed' && typeof key === 'string') {
-        updated.fanSpeeds = {
-          ...updated.fanSpeeds,
-          [key as keyof typeof updated.fanSpeeds]: finalHex
-        };
-      } else if (type === 'mode' && typeof key === 'string') {
-        updated.modes = {
-          ...updated.modes,
-          [key as keyof typeof updated.modes]: finalHex
-        };
-      }
-      return updated;
-    });
-
-    showToast(`Decoded code: ${finalHex} for ${trainingTarget.label}`, 'success');
+    setSignals(emptySignals());
     setTrainingTarget(null);
   };
 
-  // Clear a trained code
-  const clearCode = (type: typeof trainingTarget['type'], key?: number | string) => {
-    setSignals(prev => {
+  const handleEditBrand = (brand: DecodedBrand) => {
+    if (formConfigureId) {
+      leaveBrandConfigureRoom(formConfigureId);
+    }
+    setEditingBrandId(brand.id);
+    setActiveSubTab('power-modes');
+    setFormName(brand.name);
+    setFormConfigureId(brand.configureId);
+    setIsDeviceConnected(false);
+    setTrainingTarget(null);
+    setSignals({
+      ...emptySignals(),
+      ...brand.signals,
+      temperatures: {
+        ...emptyTemperatureMap(),
+        ...(brand.signals.temperatures || {}),
+      },
+    });
+    showToast(`Loaded ${brand.name} (view only — create a new configure code to retrain)`, 'info');
+  };
+
+  const handleDeleteBrand = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await deleteBrand(id);
+      setBrands((prev) => prev.filter((b) => b.id !== id));
+      showToast('Brand removed', 'info');
+      if (editingBrandId === id) {
+        handleResetForm();
+      }
+    } catch (error: any) {
+      showToast(error?.response?.data?.message || error?.message || 'Delete failed', 'error');
+    }
+  };
+
+  const startTraining = async (
+    type: TrainingTarget['type'],
+    key?: number | string,
+    label?: string
+  ) => {
+    const command = toCommandPath(type, key);
+
+    // Saved brands are view-only.
+    if (editingBrandId) {
+      return;
+    }
+
+    if (!formConfigureId) {
+      showToast('Click Configure first to generate a pairing code', 'error');
+      return;
+    }
+    if (!isDeviceConnected) {
+      showToast('Wait until the IR receiver connects (MQTT status)', 'error');
+      return;
+    }
+
+    try {
+      await selectBrandCommand(formConfigureId, command);
+      setTrainingTarget({
+        type,
+        key,
+        label: label || `${type} Command`,
+        command,
+      });
+    } catch (error: any) {
+      showToast(error?.response?.data?.message || error?.message || 'Could not arm capture', 'error');
+    }
+  };
+
+  // Verify a trained command before saving: send it to the AC via the ESP
+  const verifyCommand = async (
+    type: TrainingTarget['type'],
+    key: number | string | undefined,
+    label: string,
+    e: React.MouseEvent
+  ) => {
+    e.stopPropagation();
+    if (!formConfigureId) {
+      showToast('No configure code active', 'error');
+      return;
+    }
+
+    try {
+      await applyBrandCommand(formConfigureId, toCommandPath(type, key));
+      showToast(`Sent ${label} to the AC — check it responded`, 'success');
+    } catch (error: any) {
+      showToast(error?.response?.data?.message || error?.message || 'Verify failed', 'error');
+    }
+  };
+
+  const clearCode = async (type: TrainingTarget['type'], key?: number | string) => {
+    const command = toCommandPath(type, key);
+
+    setSignals((prev) => {
       const updated = { ...prev };
-      if (type === 'powerOn') {
-        updated.powerOn = null;
-      } else if (type === 'powerOff') {
-        updated.powerOff = null;
-      } else if (type === 'temperature' && typeof key === 'number') {
-        const nextTemps = { ...updated.temperatures };
-        delete nextTemps[key];
-        updated.temperatures = nextTemps;
-        // Also remove from visibleTemps if it's not part of the initial 5
-        if (key > 20 || key < 16) {
-          setVisibleTemps(prevV => prevV.filter(t => t !== key));
-        }
+      if (type === 'powerOn') updated.powerOn = null;
+      else if (type === 'powerOff') updated.powerOff = null;
+      else if (type === 'temperature' && typeof key === 'number') {
+        updated.temperatures = { ...updated.temperatures, [key]: null };
       } else if (type === 'fanSpeed' && typeof key === 'string') {
-        updated.fanSpeeds[key as keyof typeof updated.fanSpeeds] = null;
+        updated.fanSpeeds = { ...updated.fanSpeeds, [key as keyof typeof updated.fanSpeeds]: null };
       } else if (type === 'mode' && typeof key === 'string') {
-        updated.modes[key as keyof typeof updated.modes] = null;
+        updated.modes = { ...updated.modes, [key as keyof typeof updated.modes]: null };
       }
       return updated;
     });
+
+    if (formConfigureId && !editingBrandId) {
+      try {
+        await clearBrandCommand(formConfigureId, command);
+      } catch {
+        // local clear already applied
+      }
+    }
+
     showToast('Trained signal cleared', 'info');
   };
 
-  // Save/Submit the Brand Configuration
-  const handleSaveBrand = (e: React.FormEvent) => {
+  const handleSaveBrand = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
-      showToast('Brand name is required!', 'error');
+      showToast('Brand name is required', 'error');
       return;
     }
-    if (!formDeviceId.trim()) {
-      showToast('Device ID is required!', 'error');
+    if (!formConfigureId.trim()) {
+      showToast('Click Configure to generate a pairing code first', 'error');
+      return;
+    }
+    if (editingBrandId) {
+      showToast('Editing saved brands is not supported yet — create a new profile', 'info');
+      return;
+    }
+    if (!signals.powerOn || !signals.powerOff) {
+      showToast('Map Device ON and Device OFF before saving', 'error');
       return;
     }
 
     setIsSaving(true);
-
-    setTimeout(() => {
-      // Build temperature records currently stored
-      const savedTemps: Record<number, string | null> = {};
-      visibleTemps.forEach(t => {
-        savedTemps[t] = signals.temperatures[t] || null;
+    try {
+      const brand = await saveBrand({
+        configureId: formConfigureId.trim(),
+        brandName: formName.trim().toLowerCase(),
+        signals,
       });
-
-      const updatedBrand: DecodedBrand = {
-        id: editingBrandId || `brand-${Date.now()}`,
-        name: formName.trim(),
-        deviceId: formDeviceId.trim(),
-        apiKey: formApiKey || generateApiKey(),
-        status: isDeviceConnected ? 'connected' : 'disconnected',
-        signals: {
-          ...signals,
-          temperatures: savedTemps
-        }
-      };
-
-      if (editingBrandId) {
-        setBrands(prev => prev.map(b => b.id === editingBrandId ? updatedBrand : b));
-        showToast('Brand decoder profile updated successfully!', 'success');
-      } else {
-        setBrands(prev => [updatedBrand, ...prev]);
-        showToast('New Brand decoder profile saved!', 'success');
-      }
-
-      setIsSaving(false);
+      setBrands((prev) => [mapApiBrand(brand), ...prev]);
+      showToast('Brand profile saved', 'success');
       handleResetForm();
-    }, 800);
+    } catch (error: any) {
+      showToast(error?.response?.data?.message || error?.message || 'Save failed', 'error');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const subTabs = [
@@ -385,6 +406,9 @@ export function ACBrandManagement() {
     { id: 'temperatures' as const, label: 'Temperatures', short: 'Temp' },
     { id: 'fans' as const, label: 'Fan Speeds', short: 'Fans' },
   ];
+
+  const isTraining = (type: TrainingTarget['type'], key?: number | string) =>
+    trainingTarget?.type === type && trainingTarget?.key === key;
 
   return (
     <div className="flex-1 flex flex-col min-h-0 h-full overflow-hidden bg-slate-50/15 select-none p-4 md:p-6 pb-[calc(1rem+env(safe-area-inset-bottom))] lg:pb-6">
@@ -400,93 +424,65 @@ export function ACBrandManagement() {
               'bg-blue-50 border-blue-200 text-blue-800'
             }`}
           >
-            <Zap className="w-4 h-4 animate-pulse text-emerald-600 shrink-0" />
-            <span className="text-xs font-bold tracking-tight">{toast.message}</span>
+            <span className="text-xs font-bold">{toast.message}</span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 mb-4 md:mb-5">
-        <div className="min-w-0">
-          <h2 className="text-lg sm:text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            <Cpu className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 shrink-0" />
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4 shrink-0">
+        <div>
+          <h2 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+            <Cpu className="w-5 h-5 md:w-6 md:h-6 text-blue-600" />
             <span className="truncate">Brand Management</span>
           </h2>
-          <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 font-semibold">
-            Map IR remote signals for AC brand compatibility
+          <p className="text-xs md:text-sm text-slate-500 mt-1 font-medium">
+            Pair an IR receiver, train remote pulses, then save the brand profile.
           </p>
         </div>
         <button
           type="button"
           onClick={handleResetForm}
-          className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm shadow-blue-600/15 active:scale-95"
+          className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer active:scale-95"
         >
           <Plus className="w-4 h-4" />
           New Brand
         </button>
       </div>
 
-      {/* Split panels — page never scrolls; cards do */}
-      <div className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-12 gap-3 md:gap-4 overflow-hidden">
-
-        {/* Brand directory */}
-        <div className="lg:col-span-4 shrink-0 lg:shrink lg:min-h-0 max-h-[38vh] sm:max-h-[42vh] lg:max-h-none bg-white rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
-          <div className="px-4 md:px-5 py-3 md:py-4 border-b border-slate-100 shrink-0 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Brand Directory</h3>
-              <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
-                {brands.length} profile{brands.length === 1 ? '' : 's'} registered
-              </p>
-            </div>
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-5">
+        <div className="lg:col-span-4 flex flex-col min-h-0 bg-white rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">
+            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Saved Brands</h3>
+            <span className="text-[10px] font-bold text-slate-400">{brands.length} profiles</span>
           </div>
-
-          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide p-3 md:p-4 space-y-2.5">
-            {brands.length > 0 ? (
-              brands.map((brand, idx) => (
+          <div className="flex-1 overflow-y-auto scrollbar-hide p-3 space-y-2">
+            {loadingBrands ? (
+              <div className="flex items-center justify-center py-16 text-slate-400 text-xs font-bold gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Loading…
+              </div>
+            ) : brands.length > 0 ? (
+              brands.map((brand) => (
                 <div
                   key={brand.id}
                   onClick={() => handleEditBrand(brand)}
-                  className={`p-3 sm:p-4 border rounded-2xl flex items-center justify-between cursor-pointer transition-all duration-200 ${
+                  className={`p-3 rounded-2xl border cursor-pointer transition-all ${
                     editingBrandId === brand.id
-                      ? 'bg-blue-50/60 border-blue-200 shadow-sm'
-                      : 'bg-white border-slate-100 hover:border-slate-200 hover:bg-slate-50/50'
+                      ? 'border-blue-300 bg-blue-50/50 shadow-sm'
+                      : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50/80'
                   }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center font-black text-xs text-slate-500 shrink-0">
-                      {idx + 1}
-                    </div>
+                  <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-bold text-xs text-slate-800 truncate leading-tight">
-                        {brand.name}
+                      <p className="text-sm font-black text-slate-900 truncate">{brand.name}</p>
+                      <p className="text-[10px] font-mono font-bold text-slate-400 mt-0.5">
+                        ID {brand.configureId}
                       </p>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span className={`w-1.5 h-1.5 rounded-full ${brand.status === 'connected' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                        <span className="text-[10px] text-slate-400 font-bold tracking-tight">
-                          {brand.status === 'connected' ? 'Active Receiver' : 'Disconnected'}
-                        </span>
-                      </div>
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditBrand(brand);
-                      }}
-                      className="w-9 h-9 sm:w-8 sm:h-8 rounded-full border border-slate-200 hover:border-emerald-500 bg-white flex items-center justify-center text-slate-400 hover:text-emerald-500 transition-all shadow-sm"
-                      title="Edit Brand Profile"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
                     <button
                       type="button"
                       onClick={(e) => handleDeleteBrand(brand.id, e)}
-                      className="w-9 h-9 sm:w-8 sm:h-8 rounded-full border border-slate-200 hover:border-red-500 bg-white flex items-center justify-center text-slate-400 hover:text-red-500 transition-all shadow-sm"
-                      title="Delete Brand Profile"
+                      className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -497,20 +493,19 @@ export function ACBrandManagement() {
               <div className="flex flex-col items-center justify-center py-10 sm:py-16 text-slate-400 border border-dashed border-slate-200 rounded-2xl px-4 text-center">
                 <Layers className="w-8 h-8 text-slate-300 mb-2" />
                 <p className="font-bold text-slate-800 text-xs">No Brand Profiles Registered</p>
-                <p className="text-[10px] text-slate-500 mt-1">Connect a receiver to begin decoding</p>
+                <p className="text-[10px] text-slate-500 mt-1">Configure a receiver to begin decoding</p>
               </div>
             )}
           </div>
         </div>
 
-        {/* Decoder / form card */}
         <div className="lg:col-span-8 flex-1 min-h-0 bg-white rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
           <div className="px-4 md:px-5 py-3 md:py-4 border-b border-slate-100 shrink-0">
             <h3 className="text-sm md:text-base font-black text-slate-900 tracking-tight">
-              {editingBrandId ? 'Modify Brand Decoder' : 'Add Brand & Train Remote'}
+              {editingBrandId ? 'View Brand Profile' : 'Add Brand & Train Remote'}
             </h3>
             <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 font-semibold leading-normal">
-              Map hardware IR signals to platform commands for automation.
+              Configure generates a pairing code → ESP connects over MQTT → map IR pulses → Save Brand.
             </p>
           </div>
 
@@ -518,27 +513,32 @@ export function ACBrandManagement() {
             <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide p-4 md:p-5 space-y-5 md:space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                 <div className="space-y-1.5 min-w-0">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Receiver Device ID</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                    Receiver Device ID (pairing code)
+                  </label>
                   <div className="flex gap-2 bg-slate-50 p-1.5 border border-slate-200 rounded-2xl focus-within:ring-4 focus-within:ring-blue-500/10 focus-within:border-blue-500 transition-all">
                     <div className="flex-1 flex items-center pl-2 gap-2 min-w-0">
                       <span className={`w-2 h-2 rounded-full shrink-0 ${isDeviceConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
                       <input
                         type="text"
-                        value={formDeviceId}
-                        onChange={(e) => setFormDeviceId(e.target.value)}
-                        className="w-full min-w-0 bg-transparent outline-none border-none text-xs font-semibold text-slate-800 placeholder:text-slate-400"
-                        placeholder="e.g. DEV-AC-101"
-                        required
+                        value={formConfigureId}
+                        readOnly
+                        className="w-full min-w-0 bg-transparent outline-none border-none text-xs font-mono font-bold tracking-widest text-slate-800 placeholder:text-slate-400"
+                        placeholder="Click Configure"
                       />
                     </div>
                     <button
                       type="button"
                       onClick={handleConfigureDevice}
-                      className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] sm:text-[11px] font-bold rounded-xl transition-colors shadow-sm shrink-0 cursor-pointer active:scale-95"
+                      disabled={isConfiguring || Boolean(editingBrandId)}
+                      className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-[10px] sm:text-[11px] font-bold rounded-xl transition-colors shadow-sm shrink-0 cursor-pointer active:scale-95"
                     >
-                      Configure
+                      {isConfiguring ? '…' : 'Configure'}
                     </button>
                   </div>
+                  <p className="text-[10px] text-slate-400 font-semibold">
+                    ESP MQTT: <span className="font-mono">ackit/configure/{'{code}'}/status</span> &amp; <span className="font-mono">…/ir</span>
+                  </p>
                 </div>
 
                 <div className="space-y-1.5 min-w-0">
@@ -547,10 +547,11 @@ export function ACBrandManagement() {
                     <input
                       type="text"
                       value={formName}
-                      onChange={(e) => setFormName(e.target.value)}
+                      onChange={(e) => setFormName(e.target.value.toLowerCase())}
                       className="w-full bg-transparent outline-none border-none text-xs font-semibold text-slate-800 placeholder:text-slate-400 pl-1"
-                      placeholder="e.g. Daikin, LG, Mitsubishi"
+                      placeholder="e.g. daikin, lg, mitsubishi"
                       required
+                      disabled={Boolean(editingBrandId)}
                     />
                   </div>
                 </div>
@@ -577,77 +578,60 @@ export function ACBrandManagement() {
                 </div>
 
                 <div className="pt-1 min-h-[180px] sm:min-h-[220px]">
-                  
                   {activeSubTab === 'power-modes' && (
                     <div className="space-y-5 animate-fadeIn">
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Main Power Codes</label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="relative group">
-                            <button
-                              type="button"
-                              onClick={() => startTraining('powerOn', undefined, 'Power ON')}
-                              className={`w-full py-3 px-3 sm:px-4 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 transition-all cursor-pointer active:scale-[0.98] ${
-                                signals.powerOn
-                                  ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800 hover:bg-emerald-100/50'
-                                  : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <Power className={`w-4 h-4 shrink-0 ${signals.powerOn ? 'text-emerald-500 animate-pulse' : 'text-slate-400'}`} />
-                                <span className="shrink-0">Device ON</span>
-                              </div>
-                              {signals.powerOn ? (
-                                <span className="font-mono text-[9px] sm:text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-bold truncate max-w-[45%]">
-                                  {signals.powerOn}
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-slate-400 font-medium bg-slate-50 px-2 py-1 rounded-md shrink-0">Map</span>
-                              )}
-                            </button>
-                            {signals.powerOn && (
+                          {([
+                            { type: 'powerOn' as const, label: 'Device ON', value: signals.powerOn },
+                            { type: 'powerOff' as const, label: 'Device OFF', value: signals.powerOff },
+                          ]).map(({ type, label, value }) => (
+                            <div key={type} className="relative group">
                               <button
                                 type="button"
-                                onClick={() => clearCode('powerOn')}
-                                className="absolute -top-1.5 right-2 w-5 h-5 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-md opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10 cursor-pointer"
+                                onClick={() => startTraining(type, undefined, label)}
+                                className={`w-full py-3 px-3 sm:px-4 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 transition-all cursor-pointer active:scale-[0.98] ${
+                                  isTraining(type)
+                                    ? 'ring-2 ring-blue-500 border-blue-400 bg-blue-50 text-blue-800'
+                                    : value
+                                      ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800 hover:bg-emerald-100/50'
+                                      : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                                }`}
                               >
-                                <X className="w-2.5 h-2.5" />
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Power className={`w-4 h-4 shrink-0 ${value ? 'text-emerald-500' : 'text-slate-400'}`} />
+                                  <span className="shrink-0">{label}</span>
+                                </div>
+                                {value ? (
+                                  <span className="font-mono text-[9px] sm:text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-bold truncate max-w-[45%]">
+                                    {formatPulsePreview(value)}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 font-medium bg-slate-50 px-2 py-1 rounded-md shrink-0">Map</span>
+                                )}
                               </button>
-                            )}
-                          </div>
-
-                          <div className="relative group">
-                            <button
-                              type="button"
-                              onClick={() => startTraining('powerOff', undefined, 'Power OFF')}
-                              className={`w-full py-3 px-3 sm:px-4 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 transition-all cursor-pointer active:scale-[0.98] ${
-                                signals.powerOff
-                                  ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800 hover:bg-emerald-100/50'
-                                  : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <Power className={`w-4 h-4 shrink-0 ${signals.powerOff ? 'text-emerald-500' : 'text-slate-400'}`} />
-                                <span className="shrink-0">Device OFF</span>
-                              </div>
-                              {signals.powerOff ? (
-                                <span className="font-mono text-[9px] sm:text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-bold truncate max-w-[45%]">
-                                  {signals.powerOff}
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-slate-400 font-medium bg-slate-50 px-2 py-1 rounded-md shrink-0">Map</span>
+                              {value && !editingBrandId && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => verifyCommand(type, undefined, label, e)}
+                                    title={`Test ${label} on the AC`}
+                                    className="absolute -top-1.5 right-9 w-5 h-5 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shadow-md opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10 cursor-pointer"
+                                  >
+                                    <Send className="w-2.5 h-2.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => clearCode(type)}
+                                    className="absolute -top-1.5 right-2 w-5 h-5 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-md opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10 cursor-pointer"
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                </>
                               )}
-                            </button>
-                            {signals.powerOff && (
-                              <button
-                                type="button"
-                                onClick={() => clearCode('powerOff')}
-                                className="absolute -top-1.5 right-2 w-5 h-5 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-md opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10 cursor-pointer"
-                              >
-                                <X className="w-2.5 h-2.5" />
-                              </button>
-                            )}
-                          </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
 
@@ -655,12 +639,12 @@ export function ACBrandManagement() {
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">AC Operating Modes</label>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                           {([
-                            { key: 'cool', label: 'Cool', icon: Snowflake, activeBg: 'from-blue-500 to-indigo-600', color: 'bg-blue-50/30 text-blue-800' },
-                            { key: 'heat', label: 'Heat', icon: Sun, activeBg: 'from-orange-500 to-amber-600', color: 'bg-orange-50/30 text-orange-800' },
-                            { key: 'dry', label: 'Dry', icon: Droplets, activeBg: 'from-teal-500 to-emerald-600', color: 'bg-teal-50/30 text-teal-800' },
-                            { key: 'fan', label: 'Fan Only', icon: Fan, activeBg: 'from-slate-500 to-slate-700', color: 'bg-slate-50 text-slate-800' },
-                            { key: 'auto', label: 'Smart Auto', icon: Sparkles, activeBg: 'from-violet-500 to-fuchsia-600', color: 'bg-violet-50/30 text-violet-800' }
-                          ] as const).map(({ key, label, icon: IconComponent, activeBg, color }) => {
+                            { key: 'cool', label: 'Cool', icon: Snowflake, color: 'bg-blue-50/30 text-blue-800' },
+                            { key: 'heat', label: 'Heat', icon: Sun, color: 'bg-orange-50/30 text-orange-800' },
+                            { key: 'dry', label: 'Dry', icon: Droplets, color: 'bg-teal-50/30 text-teal-800' },
+                            { key: 'fan', label: 'Fan Only', icon: Fan, color: 'bg-slate-50 text-slate-800' },
+                            { key: 'auto', label: 'Smart Auto', icon: Sparkles, color: 'bg-violet-50/30 text-violet-800' },
+                          ] as const).map(({ key, label, icon: IconComponent, color }) => {
                             const hasSignal = !!signals.modes[key];
                             return (
                               <div key={key} className="relative group flex flex-col h-full">
@@ -668,33 +652,45 @@ export function ACBrandManagement() {
                                   type="button"
                                   onClick={() => startTraining('mode', key, `Operating Mode: ${label}`)}
                                   className={`w-full min-h-[5.5rem] py-3 px-1 rounded-xl border text-center transition-all duration-200 flex flex-col items-center justify-between flex-1 gap-1.5 cursor-pointer active:scale-[0.98] ${
-                                    hasSignal
-                                      ? `bg-gradient-to-b ${activeBg} text-white border-transparent shadow-md`
-                                      : `${color} shadow-sm border-slate-100 hover:border-slate-200`
+                                    isTraining('mode', key)
+                                      ? 'ring-2 ring-blue-500 border-blue-400 bg-blue-50 text-blue-800'
+                                      : hasSignal
+                                        ? 'bg-emerald-500 text-white border-emerald-600 shadow-md'
+                                        : `${color} shadow-sm border-slate-100 hover:border-slate-200`
                                   }`}
                                 >
                                   <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-white/20">
-                                    <IconComponent className={`w-4 h-4 ${hasSignal ? 'text-white' : 'text-slate-500'}`} />
+                                    <IconComponent className={`w-4 h-4 ${hasSignal && !isTraining('mode', key) ? 'text-white' : 'text-slate-500'}`} />
                                   </div>
                                   <span className="text-[11px] font-bold tracking-tight block leading-none">{label}</span>
                                   <div className="w-full px-1">
                                     {hasSignal ? (
-                                      <span className="font-mono text-[8px] bg-black/10 px-1 py-0.5 rounded block truncate text-white">
-                                        {signals.modes[key]}
+                                      <span className={`font-mono text-[8px] px-1 py-0.5 rounded block truncate ${hasSignal && !isTraining('mode', key) ? 'bg-black/10 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                        {formatPulsePreview(signals.modes[key])}
                                       </span>
                                     ) : (
                                       <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Map</span>
                                     )}
                                   </div>
                                 </button>
-                                {hasSignal && (
-                                  <button
-                                    type="button"
-                                    onClick={() => clearCode('mode', key)}
-                                    className="absolute -top-1.5 right-1 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow z-10 cursor-pointer"
-                                  >
-                                    <X className="w-2.5 h-2.5" />
-                                  </button>
+                                {hasSignal && !editingBrandId && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => verifyCommand('mode', key, `Mode ${label}`, e)}
+                                      title={`Test ${label} on the AC`}
+                                      className="absolute -top-1.5 right-8 w-5 h-5 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow z-10 cursor-pointer"
+                                    >
+                                      <Send className="w-2.5 h-2.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => clearCode('mode', key)}
+                                      className="absolute -top-1.5 right-1 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow z-10 cursor-pointer"
+                                    >
+                                      <X className="w-2.5 h-2.5" />
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             );
@@ -708,165 +704,48 @@ export function ACBrandManagement() {
                     <div className="space-y-4 animate-fadeIn">
                       <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
                         <p className="text-[11px] sm:text-xs text-slate-500 leading-relaxed font-semibold">
-                          Configure IR signals for each target temperature to automate thermostat controls.
+                          Select a temperature, then press that degree on the AC remote. Raw IR pulses are saved for 16°C – 30°C.
                         </p>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 py-1">
-                        {visibleTemps.map((temp) => {
+                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2 sm:gap-2.5 py-1">
+                        {ALL_TEMPERATURES.map((temp) => {
                           const hasSignal = !!signals.temperatures[temp];
                           return (
-                            <div key={temp} className="relative group flex-shrink-0">
+                            <div key={temp} className="relative group min-w-0">
                               <button
                                 type="button"
                                 onClick={() => startTraining('temperature', temp, `${temp}°C Command`)}
-                                className={`px-3.5 sm:px-4 py-2.5 text-xs font-bold rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                                  hasSignal
-                                    ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                className={`w-full px-2 sm:px-3 py-2.5 text-[11px] sm:text-xs font-bold rounded-xl border transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer active:scale-95 ${
+                                  isTraining('temperature', temp)
+                                    ? 'ring-2 ring-blue-500 border-blue-400 bg-blue-50 text-blue-800'
+                                    : hasSignal
+                                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                      : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
                                 }`}
-                                title={hasSignal ? `Hex: ${signals.temperatures[temp]}` : `Map ${temp}°C`}
+                                title={hasSignal ? `Pulse: ${signals.temperatures[temp]}` : `Map ${temp}°C`}
                               >
                                 <span>{temp}°C</span>
-                                {hasSignal ? (
-                                  <Check className="w-3 h-3" />
-                                ) : (
-                                  <span className="text-[9px] text-slate-400 font-medium bg-slate-50 px-1 rounded">Map</span>
-                                )}
+                                {hasSignal ? <Check className="w-3 h-3 shrink-0" /> : null}
                               </button>
-                              
-                              <button
-                                type="button"
-                                onClick={() => clearCode('temperature', temp)}
-                                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow z-10 cursor-pointer"
-                              >
-                                <X className="w-2.5 h-2.5" />
-                              </button>
-                            </div>
-                          );
-                        })}
-
-                        {showAddTempInput ? (
-                          <div className="flex items-center gap-1 bg-blue-50/80 p-1 border border-blue-200 rounded-xl flex-shrink-0">
-                            <input
-                              type="number"
-                              min="15"
-                              max="35"
-                              value={newTempText}
-                              onChange={(e) => setNewTempText(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  handleAddCustomTemp();
-                                }
-                              }}
-                              placeholder="deg"
-                              className="w-12 bg-white px-1.5 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-800 outline-none text-center"
-                              autoFocus
-                            />
-                            <button
-                              type="button"
-                              onClick={handleAddCustomTemp}
-                              className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center transition-colors cursor-pointer"
-                              title="Confirm"
-                            >
-                              <Check className="w-3 h-3 font-bold" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowAddTempInput(false);
-                                setNewTempText('');
-                              }}
-                              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg flex items-center justify-center transition-colors cursor-pointer"
-                              title="Cancel"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setShowAddTempInput(true)}
-                            className="w-10 h-10 rounded-xl border border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50 text-slate-400 hover:text-blue-600 flex items-center justify-center transition-all flex-shrink-0 cursor-pointer"
-                            title="Add Custom Temperature"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {activeSubTab === 'fans' && (
-                    <div className="space-y-4 animate-fadeIn">
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3">
-                        {([
-                          { key: 'low', label: 'Low', speedBars: 1, color: 'border-teal-100 text-teal-800 bg-teal-50/10 hover:bg-teal-50/30' },
-                          { key: 'medium', label: 'Medium', speedBars: 2, color: 'border-sky-100 text-sky-800 bg-sky-50/10 hover:bg-sky-50/30' },
-                          { key: 'high', label: 'High', speedBars: 3, color: 'border-blue-100 text-blue-800 bg-blue-50/10 hover:bg-blue-50/30' },
-                          { key: 'ultra', label: 'Ultra', speedBars: 4, color: 'border-indigo-100 text-indigo-800 bg-indigo-50/10 hover:bg-indigo-50/30' },
-                          { key: 'turbo', label: 'Turbo', speedBars: 5, color: 'border-orange-100 text-orange-800 bg-orange-50/10 hover:bg-orange-50/30' }
-                        ] as const).map(({ key, label, speedBars, color }) => {
-                          const hasSignal = !!signals.fanSpeeds[key];
-                          return (
-                            <div key={key} className="relative group flex flex-col h-full">
-                              <button
-                                type="button"
-                                onClick={() => startTraining('fanSpeed', key, `Fan Speed ${label.toUpperCase()}`)}
-                                className={`w-full min-h-[6rem] py-3 px-2 rounded-2xl border text-center transition-all duration-200 flex flex-col items-center justify-between flex-1 gap-2 cursor-pointer active:scale-[0.98] ${
-                                  hasSignal
-                                    ? 'bg-emerald-500 text-white border-emerald-600 shadow-md'
-                                    : `${color} border shadow-sm`
-                                }`}
-                              >
-                                <Fan className={`w-5 h-5 ${
-                                  hasSignal 
-                                    ? 'text-white' 
-                                    : 'text-slate-400 group-hover:text-slate-700'
-                                } ${
-                                  key === 'turbo' ? 'animate-[spin_0.5s_linear_infinite]' :
-                                  key === 'ultra' ? 'animate-[spin_1s_linear_infinite]' :
-                                  key === 'high' ? 'animate-[spin_1.5s_linear_infinite]' :
-                                  key === 'medium' ? 'animate-[spin_2s_linear_infinite]' :
-                                  'animate-[spin_3s_linear_infinite]'
-                                }`} />
-
-                                <div className="text-center">
-                                  <span className="text-[11px] font-bold uppercase tracking-wider block">{label}</span>
-                                  <div className="flex justify-center gap-0.5 mt-1">
-                                    {Array.from({ length: 5 }).map((_, idx) => (
-                                      <span 
-                                        key={idx} 
-                                        className={`w-1 h-2 rounded-full ${
-                                          idx < speedBars 
-                                            ? (hasSignal ? 'bg-white' : 'bg-slate-400') 
-                                            : 'bg-slate-200/50'
-                                        }`} 
-                                      />
-                                    ))}
-                                  </div>
-                                </div>
-
-                                <div className="w-full">
-                                  {hasSignal ? (
-                                    <span className="font-mono text-[9px] bg-white/20 px-1 rounded block truncate font-bold">
-                                      {signals.fanSpeeds[key]}
-                                    </span>
-                                  ) : (
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Map</span>
-                                  )}
-                                </div>
-                              </button>
-
-                              {hasSignal && (
-                                <button
-                                  type="button"
-                                  onClick={() => clearCode('fanSpeed', key)}
-                                  className="absolute -top-1.5 right-1 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow z-10 cursor-pointer"
-                                >
-                                  <X className="w-2.5 h-2.5" />
-                                </button>
+                              {hasSignal && !editingBrandId && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => verifyCommand('temperature', temp, `${temp}°C`, e)}
+                                    title={`Test ${temp}°C on the AC`}
+                                    className="absolute -top-1.5 right-4 w-5 h-5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow z-10 cursor-pointer"
+                                  >
+                                    <Send className="w-2.5 h-2.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => clearCode('temperature', temp)}
+                                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow z-10 cursor-pointer"
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                </>
                               )}
                             </div>
                           );
@@ -875,51 +754,90 @@ export function ACBrandManagement() {
                     </div>
                   )}
 
+                  {activeSubTab === 'fans' && (
+                    <div className="space-y-4 animate-fadeIn">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3">
+                        {([
+                          { key: 'low', label: 'Low' },
+                          { key: 'medium', label: 'Medium' },
+                          { key: 'high', label: 'High' },
+                          { key: 'ultra', label: 'Ultra' },
+                          { key: 'turbo', label: 'Turbo' },
+                        ] as const).map(({ key, label }) => {
+                          const hasSignal = !!signals.fanSpeeds[key];
+                          return (
+                            <div key={key} className="relative group flex flex-col h-full">
+                              <button
+                                type="button"
+                                onClick={() => startTraining('fanSpeed', key, `Fan Speed ${label}`)}
+                                className={`w-full min-h-[6rem] py-3 px-2 rounded-2xl border text-center transition-all duration-200 flex flex-col items-center justify-center gap-2 cursor-pointer active:scale-[0.98] ${
+                                  isTraining('fanSpeed', key)
+                                    ? 'ring-2 ring-blue-500 border-blue-400 bg-blue-50 text-blue-800'
+                                    : hasSignal
+                                      ? 'bg-emerald-500 text-white border-emerald-600 shadow-md'
+                                      : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                }`}
+                              >
+                                <span className="text-xs font-bold">{label}</span>
+                                {hasSignal ? (
+                                  <span className="font-mono text-[8px] px-1 py-0.5 rounded bg-black/10 truncate max-w-full">
+                                    {formatPulsePreview(signals.fanSpeeds[key])}
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] text-slate-400 font-bold uppercase">Map</span>
+                                )}
+                              </button>
+                              {hasSignal && !editingBrandId && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => verifyCommand('fanSpeed', key, `Fan ${label}`, e)}
+                                    title={`Test fan ${label} on the AC`}
+                                    className="absolute -top-1.5 right-4 w-5 h-5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow z-10 cursor-pointer"
+                                  >
+                                    <Send className="w-2.5 h-2.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => clearCode('fanSpeed', key)}
+                                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow z-10 cursor-pointer"
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {formApiKey && (
-                <div className="bg-slate-50/70 border border-slate-200 p-3.5 sm:p-4 rounded-2xl space-y-2">
-                  <div className="flex justify-between items-center gap-2">
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Dashboard Connection Key</span>
-                    <span className="text-[9px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold uppercase shrink-0">Live IoT Link</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between gap-3 bg-white p-2 border border-slate-200 rounded-xl shadow-sm">
-                    <span className="font-mono text-[10px] sm:text-[11px] font-bold text-slate-800 select-all truncate flex-1 leading-none min-w-0">
-                      {formApiKey}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleCopyKey}
-                      className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-all cursor-pointer shrink-0"
-                      title="Copy Connection API Key"
-                    >
-                      {copiedKey ? <Check className="w-4 h-4 text-emerald-600 font-bold" /> : <Copy className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-slate-400 leading-relaxed font-semibold">
-                    Flash this key on your IR receiver board firmware to map cloud-to-device remote triggers automatically.
-                  </p>
-                </div>
-              )}
             </div>
 
             <div className="shrink-0 border-t border-slate-100 p-3 md:p-4 bg-white">
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="w-full py-3 sm:py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 focus:ring-4 focus:ring-blue-500/20 cursor-pointer active:scale-[0.99] disabled:opacity-70"
-              >
-                {isSaving ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Saving Profile...</span>
-                  </>
-                ) : (
-                  <span>Save Brand Profile</span>
-                )}
-              </button>
+              {editingBrandId ? (
+                <div className="w-full py-3 sm:py-3.5 bg-slate-50 border border-slate-200 text-slate-500 font-black text-xs uppercase tracking-wider rounded-2xl flex items-center justify-center gap-2">
+                  <Cpu className="w-4 h-4" />
+                  <span>View Only — Saved Brand Profile</span>
+                </div>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="w-full py-3 sm:py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-md flex items-center justify-center gap-2 focus:ring-4 focus:ring-blue-500/20 cursor-pointer active:scale-[0.99] disabled:opacity-70"
+                >
+                  {isSaving ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Saving Profile...</span>
+                    </>
+                  ) : (
+                    <span>Save Brand Profile</span>
+                  )}
+                </button>
+              )}
             </div>
           </form>
         </div>
@@ -938,22 +856,11 @@ export function ACBrandManagement() {
                 <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
                   <Cpu className="w-6 h-6 animate-pulse" />
                 </div>
-                <h4 className="text-sm font-black text-slate-900">Training Signal Target</h4>
+                <h4 className="text-sm font-black text-slate-900">Waiting for IR Pulse</h4>
                 <p className="text-xs text-slate-500 px-2 leading-relaxed font-semibold">
-                  Press the <strong className="text-blue-600">{trainingTarget.label}</strong> button on your physical AC remote while pointing it at the IR receiver module.
+                  Press <strong className="text-blue-600">{trainingTarget.label}</strong> on the physical AC remote.
+                  Pulses from MQTT topic <span className="font-mono text-[10px]">…/ir</span> will be saved as this command.
                 </p>
-              </div>
-
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center gap-2">
-                <span className="text-[9px] font-black text-slate-400 uppercase">Interactive Sandbox Test</span>
-                <button
-                  type="button"
-                  onClick={simulateIRReceive}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl shadow-sm flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
-                >
-                  <Play className="w-3.5 h-3.5 fill-white" />
-                  Simulate Physical Remote Press
-                </button>
               </div>
 
               <button
