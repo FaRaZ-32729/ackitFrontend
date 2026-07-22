@@ -122,7 +122,7 @@ export function ManagerPage() {
       onAddVenue={async (v) => {
         return createVenue(v.name.trim(), v.orgId);
       }}
-      onAddDevice={(d) => setUnits((prev) => [...prev, { ...d, id: `ac-${Date.now()}` }])}
+      onAddDevice={(device) => setUnits((prev) => [...prev, device])}
       onDeleteUser={async (id) => {
         await deleteSubUser(id);
       }}

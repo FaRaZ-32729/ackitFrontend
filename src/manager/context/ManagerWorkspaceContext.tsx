@@ -1,5 +1,14 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useMemo, useRef, useState } from 'react';
 import { ACUnit, UserAccount, Organization, Venue, EnergyData } from '../../types';
+import {
+  createDevice,
+  updateDevice,
+  deleteDevice,
+  getDeviceBrandOptions,
+  parseCapacityTon,
+  type DeviceBrandOption,
+} from '../../api/deviceApi';
+import { getVenuesByOrganization } from '../../api/venueApi';
 
 export interface ManagerWorkspaceProps {
   units: ACUnit[];
@@ -13,7 +22,7 @@ export interface ManagerWorkspaceProps {
   onAddUser: (user: Omit<UserAccount, 'id'>) => void | Promise<void | UserAccount>;
   onAddOrg: (org: Omit<Organization, 'id'>) => void | Promise<void | Organization>;
   onAddVenue: (venue: Omit<Venue, 'id'>) => void | Promise<void | Venue>;
-  onAddDevice: (device: Omit<ACUnit, 'id'>) => void;
+  onAddDevice: (device: ACUnit) => void;
   onDeleteUser: (id: string) => void | Promise<void>;
   onUpdateUser: (id: string, data: Partial<UserAccount>) => void | Promise<void>;
   onDeleteOrg: (id: string) => void | Promise<void>;
@@ -52,6 +61,41 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     onUpdateDevice,
   } = props;
 
+  // Listeners so DevicesPage (API-loaded list) stays in sync with modal actions
+  const deviceEventListeners = useRef(
+    new Set<(deviceId: string, event: ACUnit['events'][number]) => void>()
+  );
+  const deviceDeletedListeners = useRef(new Set<(deviceId: string) => void>());
+  const deviceUpdatedListeners = useRef(new Set<(device: ACUnit) => void>());
+
+  const subscribeDeviceEventAdd = (
+    listener: (deviceId: string, event: ACUnit['events'][number]) => void
+  ) => {
+    deviceEventListeners.current.add(listener);
+    return () => {
+      deviceEventListeners.current.delete(listener);
+    };
+  };
+
+  const subscribeDeviceDeleted = (listener: (deviceId: string) => void) => {
+    deviceDeletedListeners.current.add(listener);
+    return () => {
+      deviceDeletedListeners.current.delete(listener);
+    };
+  };
+
+  const subscribeDeviceUpdated = (listener: (device: ACUnit) => void) => {
+    deviceUpdatedListeners.current.add(listener);
+    return () => {
+      deviceUpdatedListeners.current.delete(listener);
+    };
+  };
+
+  const handleDeleteDeviceLocal = (id: string) => {
+    onDeleteDevice(id);
+    deviceDeletedListeners.current.forEach((fn) => fn(id));
+  };
+
   // New User Form State
   const [showAddUser, setShowAddUser] = useState(false);
   const [addUserStep, setAddUserStep] = useState<'details' | 'success'>('details');
@@ -76,9 +120,33 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
   const [newDeviceName, setNewDeviceName] = useState('');
   const [newDeviceOrgId, setNewDeviceOrgId] = useState('');
   const [newDeviceVenueId, setNewDeviceVenueId] = useState('');
-  const [newDeviceBrand, setNewDeviceBrand] = useState('Daikin');
+  const [newDeviceBrand, setNewDeviceBrand] = useState('');
   const [newDeviceEnergySensor, setNewDeviceEnergySensor] = useState(true);
-  const [newDeviceCapacity, setNewDeviceCapacity] = useState('1.5ton');
+  const [newDeviceCapacity, setNewDeviceCapacity] = useState('1.5');
+  const [newDeviceVenues, setNewDeviceVenues] = useState<Venue[]>([]);
+  const [newDeviceBrands, setNewDeviceBrands] = useState<DeviceBrandOption[]>([]);
+  const [newDeviceError, setNewDeviceError] = useState('');
+  const [deviceToast, setDeviceToast] = useState<{
+    message: string;
+    type: 'success' | 'error' | 'info';
+  } | null>(null);
+
+  const showDeviceToast = (
+    message: string,
+    type: 'success' | 'error' | 'info' = 'error'
+  ) => {
+    setDeviceToast({ message, type });
+    window.setTimeout(() => setDeviceToast(null), 3500);
+  };
+  const [isAddingDevice, setIsAddingDevice] = useState(false);
+
+  // Edit Device Form State
+  const [editDeviceVenues, setEditDeviceVenues] = useState<Venue[]>([]);
+  const [editDeviceBrands, setEditDeviceBrands] = useState<DeviceBrandOption[]>([]);
+  const [editDeviceError, setEditDeviceError] = useState('');
+  const [isUpdatingDevice, setIsUpdatingDevice] = useState(false);
+  const [isDeletingDevice, setIsDeletingDevice] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // Edit State
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
@@ -114,14 +182,101 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     if (showAddDevice) {
       const defaultOrgId = orgs[0]?.id || '';
       setNewDeviceOrgId(defaultOrgId);
-      const filteredVenues = venues.filter(v => v.orgId === defaultOrgId);
-      setNewDeviceVenueId(filteredVenues[0]?.id || venues[0]?.id || '');
+      setNewDeviceVenueId('');
       setNewDeviceName('');
-      setNewDeviceBrand('Daikin');
+      setNewDeviceBrand('');
       setNewDeviceEnergySensor(true);
-      setNewDeviceCapacity('1.5ton');
+      setNewDeviceCapacity('1.5');
+      setNewDeviceError('');
+
+      getDeviceBrandOptions()
+        .then((brands) => {
+          setNewDeviceBrands(brands);
+          setNewDeviceBrand(brands[0]?.id || '');
+        })
+        .catch(() => setNewDeviceError('Failed to load AC brands'));
     }
-  }, [showAddDevice, orgs, venues]);
+  }, [showAddDevice, orgs]);
+
+  React.useEffect(() => {
+    if (!showAddDevice || !newDeviceOrgId) {
+      setNewDeviceVenues([]);
+      setNewDeviceVenueId('');
+      return;
+    }
+
+    let active = true;
+    setNewDeviceVenueId('');
+    setNewDeviceVenues([]);
+
+    getVenuesByOrganization(newDeviceOrgId)
+      .then((list) => {
+        if (!active) return;
+        setNewDeviceVenues(list);
+        setNewDeviceVenueId(list[0]?.id || '');
+      })
+      .catch(() => {
+        if (!active) return;
+        setNewDeviceVenues([]);
+        setNewDeviceVenueId('');
+        setNewDeviceError('Failed to load venues for this organization');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [showAddDevice, newDeviceOrgId]);
+
+  // Prefill edit modal when a device is opened
+  React.useEffect(() => {
+    if (!editingDevice) {
+      setEditDeviceVenues([]);
+      setEditDeviceBrands([]);
+      setEditDeviceError('');
+      return;
+    }
+
+    setEditDeviceError('');
+    getDeviceBrandOptions()
+      .then((brands) => {
+        setEditDeviceBrands(brands);
+        setEditingDevice((prev) => {
+          if (!prev) return prev;
+          const brandId =
+            prev.brandId ||
+            brands.find((b) => b.name === prev.brand)?.id ||
+            brands[0]?.id ||
+            '';
+          return { ...prev, brandId };
+        });
+      })
+      .catch(() => setEditDeviceError('Failed to load AC brands'));
+  }, [editingDevice?.id]);
+
+  React.useEffect(() => {
+    if (!editingDevice?.organizationId) {
+      setEditDeviceVenues([]);
+      return;
+    }
+
+    const orgId = editingDevice.organizationId;
+    getVenuesByOrganization(orgId)
+      .then((list) => {
+        setEditDeviceVenues(list);
+        setEditingDevice((prev) => {
+          if (!prev || prev.organizationId !== orgId) return prev;
+          const venueStillValid = list.some((v) => v.id === prev.venueId);
+          return {
+            ...prev,
+            venueId: venueStillValid ? prev.venueId : list[0]?.id || '',
+          };
+        });
+      })
+      .catch(() => {
+        setEditDeviceVenues([]);
+        setEditDeviceError('Failed to load venues for this organization');
+      });
+  }, [editingDevice?.organizationId]);
 
   // Aggregated Data for Overview
   const filteredUnits = React.useMemo(() => {
@@ -309,31 +464,156 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     setNewVenueName('');
   };
 
-  const handleAddDevice = () => {
-    if (!newDeviceName || !newDeviceVenueId) return;
-    onAddDevice({
-      name: newDeviceName,
-      venueId: newDeviceVenueId,
-      isOn: false,
-      currentTemp: 24,
-      targetTemp: 22,
-      isLocked: false,
-      eventLocked: false,
-      hasFault: false,
-      brand: newDeviceBrand,
-      hasEnergySensor: newDeviceEnergySensor,
-      capacityTon: newDeviceCapacity,
-      events: [],
-      energyConsumption: {
-        hourly: [{ label: '00:00', kwh: 0 }],
-        daily: [{ label: new Date().toISOString().split('T')[0], kwh: 0 }],
-        weekly: [{ label: 'Week 1', kwh: 0 }],
-        monthly: [{ label: new Date().toISOString().slice(0, 7), kwh: 0 }],
-        yearly: [{ label: new Date().getFullYear().toString(), kwh: 0 }]
+  const handleAddDevice = async () => {
+    if (
+      !newDeviceName.trim() ||
+      !newDeviceOrgId ||
+      !newDeviceVenueId ||
+      !newDeviceBrand
+    ) return;
+
+    // Guard against stale venue after org switch
+    const venueBelongsToOrg = newDeviceVenues.some((v) => v.id === newDeviceVenueId);
+    if (venueBelongsToOrg === false) {
+      const message = 'Please select a venue that belongs to the selected organization';
+      setNewDeviceError(message);
+      showDeviceToast(message, 'error');
+      return;
+    }
+
+    if (newDeviceName.trim().length < 2) {
+      const message = 'Device name must be at least 2 characters';
+      setNewDeviceError(message);
+      showDeviceToast(message, 'error');
+      return;
+    }
+
+    const nameExistsLocally = units.some(
+      (u) =>
+        u.venueId === newDeviceVenueId &&
+        u.name.trim().toLowerCase() === newDeviceName.trim().toLowerCase()
+    );
+    if (nameExistsLocally) {
+      const message = 'This name is already present in this venue';
+      setNewDeviceError(message);
+      showDeviceToast(message, 'error');
+      return;
+    }
+
+    setIsAddingDevice(true);
+    setNewDeviceError('');
+    try {
+      const device = await createDevice({
+        name: newDeviceName.trim(),
+        organization: String(newDeviceOrgId),
+        venue: String(newDeviceVenueId),
+        brand: String(newDeviceBrand),
+        capacity: Number(newDeviceCapacity),
+      });
+      onAddDevice(device);
+      setShowAddDevice(false);
+      setNewDeviceName('');
+      showDeviceToast('Device created successfully', 'success');
+    } catch (error: any) {
+      const status = error?.response?.status;
+      const apiMessage = String(error?.response?.data?.message || '');
+      const apiErrors = error?.response?.data?.errors;
+      const details =
+        Array.isArray(apiErrors) && apiErrors.length > 0
+          ? apiErrors.map((e: { message?: string }) => e.message).filter(Boolean).join(' · ')
+          : '';
+
+      const isNameTaken =
+        status === 409 &&
+        (/already exists/i.test(apiMessage) ||
+          /deviceName/i.test(apiMessage) ||
+          /name is already/i.test(apiMessage) ||
+          /name already/i.test(details));
+
+      const message = isNameTaken
+        ? 'This name is already present in this venue'
+        : details || apiMessage || error?.message || 'Failed to create device';
+
+      setNewDeviceError(message);
+      showDeviceToast(message, 'error');
+    } finally {
+      setIsAddingDevice(false);
+    }
+  };
+
+  const handleUpdateDevice = async () => {
+    if (!editingDevice) return;
+    if (
+      !editingDevice.name.trim() ||
+      !editingDevice.organizationId ||
+      !editingDevice.venueId ||
+      !editingDevice.brandId
+    ) {
+      return;
+    }
+
+    setIsUpdatingDevice(true);
+    setEditDeviceError('');
+    try {
+      const updated = await updateDevice(editingDevice.id, {
+        name: editingDevice.name.trim(),
+        organization: editingDevice.organizationId,
+        venue: editingDevice.venueId,
+        brand: editingDevice.brandId,
+        capacity: parseCapacityTon(editingDevice.capacityTon),
+      });
+      // Preserve client-only fields (events, live toggles) where possible
+      const merged: ACUnit = {
+        ...editingDevice,
+        ...updated,
+        events: editingDevice.events || [],
+        isOn: editingDevice.isOn,
+        isLocked: editingDevice.isLocked,
+        eventLocked: editingDevice.eventLocked,
+        targetTemp: editingDevice.targetTemp,
+        currentTemp: editingDevice.currentTemp,
+      };
+      onUpdateDevice(merged.id, merged);
+      deviceUpdatedListeners.current.forEach((fn) => fn(merged));
+      setEditingDevice(null);
+    } catch (error: any) {
+      setEditDeviceError(
+        error?.response?.data?.errors?.[0]?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to update device'
+      );
+    } finally {
+      setIsUpdatingDevice(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingId || !deleteType) return;
+    setDeleteError('');
+    try {
+      if (deleteType === 'user') await onDeleteUser(deletingId);
+      else if (deleteType === 'org') await onDeleteOrg(deletingId);
+      else if (deleteType === 'venue') await onDeleteVenue(deletingId);
+      else if (deleteType === 'device') {
+        setIsDeletingDevice(true);
+        await deleteDevice(deletingId);
+        handleDeleteDeviceLocal(deletingId);
       }
-    });
-    setShowAddDevice(false);
-    setNewDeviceName('');
+      setDeletingId(null);
+      setDeleteType(null);
+    } catch (error: any) {
+      if (deleteType === 'device') {
+        setDeleteError(
+          error?.response?.data?.message ||
+          error?.message ||
+          'Failed to delete device'
+        );
+      }
+      // Keep confirm open on failure
+    } finally {
+      setIsDeletingDevice(false);
+    }
   };
 
   const closeAddEventModal = () => {
@@ -352,15 +632,14 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
 
   const handleAddEvent = () => {
     if (!eventDeviceId || !eventName || !eventTime) return;
-    
-    const device = units.find(u => u.id === eventDeviceId);
-    if (!device) return;
+
+    const device = units.find((u) => u.id === eventDeviceId);
 
     const newEvent = {
       id: `evt-${Date.now()}`,
       name: eventName,
       time: eventTime,
-      action: eventIsOnOff ? eventOnOffAction : 'SET_TEMP' as const,
+      action: eventIsOnOff ? eventOnOffAction : ('SET_TEMP' as const),
       targetTemp: eventIsOnOff ? undefined : parseInt(eventTemp),
       isRecurring: eventIsRecurring,
       startDate: !eventIsRecurring ? eventStartDate : undefined,
@@ -369,9 +648,14 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
       enabled: true,
     };
 
-    onUpdateDevice(eventDeviceId, {
-      events: [...device.events, newEvent]
-    });
+    if (device) {
+      onUpdateDevice(eventDeviceId, {
+        events: [...(device.events || []), newEvent],
+      });
+    }
+
+    // Always notify DevicesPage local list (API-loaded devices may not be in units)
+    deviceEventListeners.current.forEach((fn) => fn(eventDeviceId, newEvent));
 
     closeAddEventModal();
   };
@@ -404,7 +688,7 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     onTabChange, onSelectUnit, onTogglePower,
     onAddUser, onAddOrg, onAddVenue, onAddDevice,
     onDeleteUser, onUpdateUser, onDeleteOrg, onUpdateOrg,
-    onDeleteVenue, onUpdateVenue, onDeleteDevice, onUpdateDevice,
+    onDeleteVenue, onUpdateVenue, onDeleteDevice: handleDeleteDeviceLocal, onUpdateDevice,
     showAddUser, setShowAddUser, addUserStep, setAddUserStep,
     newUserName, setNewUserName, newUserEmail, setNewUserEmail,
     newUserPermission, setNewUserPermission, newUserOrgs, setNewUserOrgs, newUserVenues, setNewUserVenues,
@@ -414,7 +698,10 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     showAddDevice, setShowAddDevice, newDeviceName, setNewDeviceName,
     newDeviceOrgId, setNewDeviceOrgId, newDeviceVenueId, setNewDeviceVenueId,
     newDeviceBrand, setNewDeviceBrand, newDeviceEnergySensor, setNewDeviceEnergySensor,
-    newDeviceCapacity, setNewDeviceCapacity,
+    newDeviceCapacity, setNewDeviceCapacity, newDeviceVenues, newDeviceBrands,
+    newDeviceError, isAddingDevice, deviceToast, setDeviceToast,
+    editDeviceVenues, editDeviceBrands, editDeviceError, isUpdatingDevice,
+    isDeletingDevice, deleteError, setDeleteError,
     editingUser, setEditingUser, editingOrg, setEditingOrg,
     editingVenue, setEditingVenue, editingDevice, setEditingDevice,
     deletingId, setDeletingId, deleteType, setDeleteType,
@@ -437,7 +724,9 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     eventIsOnOff, setEventIsOnOff, eventOnOffAction, setEventOnOffAction, eventTime, setEventTime,
     handleAddUser, toggleUser, toggleVenueRow, openUserDetailModal, closeUserDetailModal,
     closeAddUserModal, handleAddOrg, handleAddVenue, handleAddDevice,
+    handleUpdateDevice, handleConfirmDelete,
     closeAddEventModal, handleAddEvent, toggleVenue,
+    subscribeDeviceEventAdd, subscribeDeviceDeleted, subscribeDeviceUpdated,
     filteredManagedVenues, filteredManagedDevices,
   };
 }

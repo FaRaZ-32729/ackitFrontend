@@ -8,7 +8,8 @@ function getSocketUrl() {
   return String(base).replace(/\/$/, '');
 }
 
-export function getBrandSocket(): Socket {
+/** Shared authenticated Socket.IO client (brand + device events). */
+export function getAppSocket(): Socket {
   if (socket?.connected) return socket;
 
   if (!socket) {
@@ -28,6 +29,10 @@ export function getBrandSocket(): Socket {
   }
 
   return socket;
+}
+
+export function getBrandSocket(): Socket {
+  return getAppSocket();
 }
 
 export function joinBrandConfigureRoom(configureId: string) {

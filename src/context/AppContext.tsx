@@ -46,6 +46,7 @@ import {
   UpdateSubUserPayload,
 } from '../api/userApi';
 import axios from 'axios';
+import { getAppSocket } from '../api/brandSocket';
 
 const USER_KEY = 'iotify_user';
 
@@ -723,6 +724,104 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       )
     );
   };
+
+  // Live device power/temp from ESP (app control OR physical remote)
+  useEffect(() => {
+    if (!token || (role !== 'manager' && role !== 'user' && role !== 'admin')) {
+      return;
+    }
+
+    const socket = getAppSocket();
+    const onDeviceState = (payload: {
+      id?: string;
+      deviceId?: string;
+      state?: 'on' | 'off';
+      isOn?: boolean;
+      temperature?: number;
+    }) => {
+      if (!payload?.id) return;
+
+      const patch: Partial<ACUnit> = {};
+      if (typeof payload.isOn === 'boolean') {
+        patch.isOn = payload.isOn;
+      } else if (payload.state === 'on' || payload.state === 'off') {
+        patch.isOn = payload.state === 'on';
+      }
+      if (
+        typeof payload.temperature === 'number' &&
+        payload.temperature >= 16 &&
+        payload.temperature <= 30
+      ) {
+        patch.targetTemp = payload.temperature;
+        patch.currentTemp = payload.temperature;
+      }
+      if (Object.keys(patch).length === 0) return;
+
+      setUnits((prev) => {
+        const exists = prev.some((u) => u.id === payload.id);
+        if (!exists) {
+          // Upsert a lightweight unit so dashboard can reflect live devices
+          return [
+            ...prev,
+            {
+              id: payload.id!,
+              name: payload.deviceId || 'Device',
+              venueId: '',
+              isOn: patch.isOn ?? false,
+              currentTemp: patch.currentTemp ?? 16,
+              targetTemp: patch.targetTemp ?? 16,
+              isLocked: false,
+              eventLocked: false,
+              hasFault: false,
+              energyConsumption: {
+                hourly: [{ label: '00:00', kwh: 0 }],
+                daily: [{ label: new Date().toISOString().split('T')[0], kwh: 0 }],
+                weekly: [{ label: 'Week 1', kwh: 0 }],
+                monthly: [{ label: new Date().toISOString().slice(0, 7), kwh: 0 }],
+                yearly: [{ label: new Date().getFullYear().toString(), kwh: 0 }],
+              },
+              events: [],
+            },
+          ];
+        }
+        return prev.map((u) => (u.id === payload.id ? { ...u, ...patch } : u));
+      });
+    };
+
+    socket.on('device:state', onDeviceState);
+
+    const onDeviceRemote = (payload: {
+      id?: string;
+      remote?: 'unlock' | 'lock' | 'superlock';
+      isLocked?: boolean;
+      eventLocked?: boolean;
+    }) => {
+      if (!payload?.id) return;
+      const patch: Partial<ACUnit> = {
+        isLocked: Boolean(payload.isLocked),
+        eventLocked: Boolean(payload.eventLocked),
+      };
+      if (payload.remote === 'unlock') {
+        patch.isLocked = false;
+        patch.eventLocked = false;
+      } else if (payload.remote === 'lock') {
+        patch.isLocked = true;
+        patch.eventLocked = false;
+      } else if (payload.remote === 'superlock') {
+        patch.isLocked = true;
+        patch.eventLocked = true;
+      }
+      setUnits((prev) =>
+        prev.map((u) => (u.id === payload.id ? { ...u, ...patch } : u))
+      );
+    };
+
+    socket.on('device:remote', onDeviceRemote);
+    return () => {
+      socket.off('device:state', onDeviceState);
+      socket.off('device:remote', onDeviceRemote);
+    };
+  }, [token, role]);
 
   const handleSetTemp = (id: string, temp: number) => {
     setUnits((prev) =>

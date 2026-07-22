@@ -1,13 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { CustomDropdown } from '../../components/ui/CustomDropdown';
 import { MultiSelectDropdown } from '../../components/ui/MultiSelectDropdown';
-import { CheckCircle2, AlertTriangle, MapPin, MonitorSmartphone, Activity, Building2 } from 'lucide-react';
-import { AC_BRANDS } from '../constants';
+import { CheckCircle2, AlertTriangle, MapPin, MonitorSmartphone, Activity, Building2, Copy, Check } from 'lucide-react';
 import { useManagerWorkspace } from '../context/ManagerWorkspaceContext';
 
 /** Shared manager modals (legacy root-level modals; CSS unchanged) */
 export function ManagerModals() {
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
   const {
     units, users, orgs, venues,
     onTabChange, onSelectUnit, onTogglePower,
@@ -23,7 +23,10 @@ export function ManagerModals() {
     showAddDevice, setShowAddDevice, newDeviceName, setNewDeviceName,
     newDeviceOrgId, setNewDeviceOrgId, newDeviceVenueId, setNewDeviceVenueId,
     newDeviceBrand, setNewDeviceBrand, newDeviceEnergySensor, setNewDeviceEnergySensor,
-    newDeviceCapacity, setNewDeviceCapacity,
+    newDeviceCapacity, setNewDeviceCapacity, newDeviceVenues, newDeviceBrands,
+    newDeviceError, isAddingDevice, deviceToast, setDeviceToast,
+    editDeviceVenues, editDeviceBrands, editDeviceError, isUpdatingDevice,
+    isDeletingDevice, deleteError, setDeleteError,
     editingUser, setEditingUser, editingOrg, setEditingOrg,
     editingVenue, setEditingVenue, editingDevice, setEditingDevice,
     deletingId, setDeletingId, deleteType, setDeleteType,
@@ -42,7 +45,8 @@ export function ManagerModals() {
     eventEndDate, setEventEndDate, eventDays, setEventDays,
     eventIsOnOff, setEventIsOnOff, eventOnOffAction, setEventOnOffAction, eventTime, setEventTime,
     handleAddUser, closeAddUserModal, openUserDetailModal, closeUserDetailModal,
-    handleAddOrg, handleAddVenue, handleAddDevice, closeAddEventModal, handleAddEvent,
+    handleAddOrg, handleAddVenue, handleAddDevice, handleUpdateDevice, handleConfirmDelete,
+    closeAddEventModal, handleAddEvent,
     toggleVenue, filteredManagedVenues, filteredManagedDevices,
   } = useManagerWorkspace();
 
@@ -368,6 +372,11 @@ export function ManagerModals() {
               title="Add Device"
             >
               <div className="space-y-4">
+                {newDeviceError && (
+                  <div className="p-3 bg-red-50 border border-red-100 text-red-600 rounded-xl text-xs font-bold">
+                    {newDeviceError}
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">Device Name</label>
                   <input
@@ -380,73 +389,66 @@ export function ManagerModals() {
                 </div>
                 <div>
                   <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">Select Organization</label>
-                  <select
+                  <CustomDropdown
                     value={newDeviceOrgId}
-                    onChange={(e) => {
-                      const orgId = e.target.value;
-                      setNewDeviceOrgId(orgId);
-                      const filtered = venues.filter(v => v.orgId === orgId);
-                      setNewDeviceVenueId(filtered[0]?.id || '');
-                    }}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs font-bold cursor-pointer text-slate-800"
-                  >
-                    {orgs.map((o) => (
-                      <option key={o.id} value={o.id}>{o.name}</option>
-                    ))}
-                  </select>
+                    onChange={setNewDeviceOrgId}
+                    icon={Building2}
+                    placeholder="Select organization"
+                    options={orgs.map((org) => ({
+                      value: org.id,
+                      label: org.name,
+                    }))}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">Select Venue</label>
-                  <select
+                  <CustomDropdown
                     value={newDeviceVenueId}
-                    onChange={(e) => setNewDeviceVenueId(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs font-bold cursor-pointer text-slate-800"
-                  >
-                    {venues.filter(v => v.orgId === newDeviceOrgId).map((v) => (
-                      <option key={v.id} value={v.id}>{v.name}</option>
-                    ))}
-                    {venues.filter(v => v.orgId === newDeviceOrgId).length === 0 && (
-                      <option value="">No venues available in this organization</option>
-                    )}
-                  </select>
+                    onChange={setNewDeviceVenueId}
+                    icon={MapPin}
+                    placeholder="No venues available"
+                    options={
+                      newDeviceVenues.length > 0
+                        ? newDeviceVenues.map((venue) => ({
+                            value: venue.id,
+                            label: venue.name,
+                          }))
+                        : [{ value: '', label: 'No venues available', disabled: true }]
+                    }
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">AC Brand</label>
-                  <select
+                  <CustomDropdown
                     value={newDeviceBrand}
-                    onChange={(e) => setNewDeviceBrand(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs font-bold cursor-pointer text-slate-800"
-                  >
-                    {AC_BRANDS.map((b) => (
-                      <option key={b} value={b}>{b}</option>
-                    ))}
-                  </select>
+                    onChange={setNewDeviceBrand}
+                    icon={MonitorSmartphone}
+                    placeholder="No brands available"
+                    options={
+                      newDeviceBrands.length > 0
+                        ? newDeviceBrands.map((brand) => ({
+                            value: brand.id,
+                            label: brand.name,
+                          }))
+                        : [{ value: '', label: 'No brands available', disabled: true }]
+                    }
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">AC Capacity</label>
-                  <select
+                  <CustomDropdown
                     value={newDeviceCapacity}
-                    onChange={(e) => setNewDeviceCapacity(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs font-bold cursor-pointer text-slate-800"
-                  >
-                    <option value="1ton">1.0 Ton</option>
-                    <option value="1.5ton">1.5 Ton</option>
-                    <option value="2ton">2.0 Ton</option>
-                    <option value="2.5ton">2.5 Ton</option>
-                    <option value="3.5ton">3.5 Ton</option>
-                  </select>
-                </div>
-                <div className="flex items-center gap-2.5 py-1">
-                  <input
-                    type="checkbox"
-                    id="newDeviceEnergySensor"
-                    checked={newDeviceEnergySensor}
-                    onChange={(e) => setNewDeviceEnergySensor(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 bg-slate-50 border-slate-200 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer"
+                    onChange={setNewDeviceCapacity}
+                    icon={Activity}
+                    options={[
+                      { value: '1', label: '1.0 Ton' },
+                      { value: '1.5', label: '1.5 Ton' },
+                      { value: '2', label: '2.0 Ton' },
+                      { value: '2.5', label: '2.5 Ton' },
+                      { value: '3', label: '3.0 Ton' },
+                      { value: '3.5', label: '3.5 Ton' },
+                    ]}
                   />
-                  <label htmlFor="newDeviceEnergySensor" className="text-xs font-black uppercase text-slate-500 tracking-wider cursor-pointer select-none">
-                    Enable Energy Monitoring Sensor
-                  </label>
                 </div>
                 <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                   <button
@@ -457,9 +459,16 @@ export function ManagerModals() {
                   </button>
                   <button
                     onClick={handleAddDevice}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                    disabled={
+                      isAddingDevice ||
+                      !newDeviceName.trim() ||
+                      !newDeviceOrgId ||
+                      !newDeviceVenueId ||
+                      !newDeviceBrand
+                    }
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
                   >
-                    Save Device
+                    {isAddingDevice ? 'Saving…' : 'Save Device'}
                   </button>
                 </div>
               </div>
@@ -686,86 +695,154 @@ export function ManagerModals() {
             {/* Edit Device Modal */}
             <Modal
               isOpen={!!editingDevice}
-              onClose={() => setEditingDevice(null)}
+              onClose={() => {
+                setEditingDevice(null);
+                setApiKeyCopied(false);
+              }}
               title="Edit Device"
             >
               {editingDevice && (
                 <div className="space-y-4">
+                  {editDeviceError && (
+                    <div className="text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+                      {editDeviceError}
+                    </div>
+                  )}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Device Name</label>
+                    <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">Device Name</label>
                     <input
                       type="text"
                       value={editingDevice.name}
                       onChange={(e) => setEditingDevice({ ...editingDevice, name: e.target.value })}
-                      className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs font-bold transition-all text-slate-800"
                     />
                   </div>
-                  <div className="min-w-0">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Venue</label>
+                  <div>
+                    <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">Select Organization</label>
                     <CustomDropdown
-                      desktopNative
-                      nativeClassName="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold"
-                      value={editingDevice.venueId}
-                      onChange={(v) => setEditingDevice({ ...editingDevice, venueId: v })}
-                      options={venues.map((v) => ({
-                        value: v.id,
-                        label: `${orgs.find((o) => o.id === v.orgId)?.name || 'Campus'} - ${v.name}`,
+                      value={editingDevice.organizationId || ''}
+                      onChange={(orgId) =>
+                        setEditingDevice({
+                          ...editingDevice,
+                          organizationId: orgId,
+                          venueId: '',
+                        })
+                      }
+                      icon={Building2}
+                      placeholder="Select organization"
+                      options={orgs.map((org) => ({
+                        value: org.id,
+                        label: org.name,
                       }))}
                     />
                   </div>
-                  <div className="min-w-0">
-                    <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">AC Brand</label>
+                  <div>
+                    <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">Select Venue</label>
                     <CustomDropdown
-                      desktopNative
-                      nativeClassName="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold cursor-pointer"
-                      value={editingDevice.brand || 'Daikin'}
-                      onChange={(v) => setEditingDevice({ ...editingDevice, brand: v })}
-                      options={AC_BRANDS.map((b) => ({ value: b, label: b }))}
+                      value={editingDevice.venueId}
+                      onChange={(venueId) => setEditingDevice({ ...editingDevice, venueId })}
+                      icon={MapPin}
+                      placeholder="No venues available"
+                      options={
+                        editDeviceVenues.length > 0
+                          ? editDeviceVenues.map((venue) => ({
+                              value: venue.id,
+                              label: venue.name,
+                            }))
+                          : [{ value: '', label: 'No venues available', disabled: true }]
+                      }
                     />
                   </div>
-                  <div className="min-w-0">
+                  <div>
+                    <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">AC Brand</label>
+                    <CustomDropdown
+                      value={editingDevice.brandId || ''}
+                      onChange={(brandId) => {
+                        const brandName = editDeviceBrands.find((b) => b.id === brandId)?.name || '';
+                        setEditingDevice({ ...editingDevice, brandId, brand: brandName });
+                      }}
+                      icon={MonitorSmartphone}
+                      placeholder="No brands available"
+                      options={
+                        editDeviceBrands.length > 0
+                          ? editDeviceBrands.map((brand) => ({
+                              value: brand.id,
+                              label: brand.name,
+                            }))
+                          : [{ value: '', label: 'No brands available', disabled: true }]
+                      }
+                    />
+                  </div>
+                  <div>
                     <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">AC Capacity</label>
                     <CustomDropdown
-                      desktopNative
-                      nativeClassName="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xs font-bold cursor-pointer"
-                      value={editingDevice.capacityTon || '1.5ton'}
-                      onChange={(v) => setEditingDevice({ ...editingDevice, capacityTon: v })}
+                      value={String(Number(String(editingDevice.capacityTon || '1.5').replace(/ton/gi, '')) || 1.5)}
+                      onChange={(capacity) =>
+                        setEditingDevice({ ...editingDevice, capacityTon: `${capacity}ton` })
+                      }
+                      icon={Activity}
                       options={[
-                        { value: '1ton', label: '1.0 Ton' },
-                        { value: '1.5ton', label: '1.5 Ton' },
-                        { value: '2ton', label: '2.0 Ton' },
-                        { value: '2.5ton', label: '2.5 Ton' },
-                        { value: '3.5ton', label: '3.5 Ton' },
+                        { value: '1', label: '1.0 Ton' },
+                        { value: '1.5', label: '1.5 Ton' },
+                        { value: '2', label: '2.0 Ton' },
+                        { value: '2.5', label: '2.5 Ton' },
+                        { value: '3', label: '3.0 Ton' },
+                        { value: '3.5', label: '3.5 Ton' },
                       ]}
                     />
                   </div>
-                  <div className="flex items-center gap-2.5 py-1">
-                    <input
-                      type="checkbox"
-                      id="editDeviceEnergySensor"
-                      checked={editingDevice.hasEnergySensor !== false}
-                      onChange={(e) => setEditingDevice({ ...editingDevice, hasEnergySensor: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 bg-slate-50 border-slate-200 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer"
-                    />
-                    <label htmlFor="editDeviceEnergySensor" className="text-xs font-black uppercase text-slate-500 tracking-wider cursor-pointer select-none">
-                      Enable Energy Monitoring Sensor
-                    </label>
+                  <div>
+                    <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">API Key</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={editingDevice.apiKey || ''}
+                        className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl outline-none text-xs font-mono font-bold text-slate-600 cursor-default select-all"
+                        placeholder="No API key"
+                      />
+                      <button
+                        type="button"
+                        title={apiKeyCopied ? 'Copied' : 'Copy API key'}
+                        disabled={!editingDevice.apiKey}
+                        onClick={() => {
+                          if (!editingDevice.apiKey) return;
+                          void navigator.clipboard.writeText(editingDevice.apiKey).then(() => {
+                            setApiKeyCopied(true);
+                            window.setTimeout(() => setApiKeyCopied(false), 1800);
+                          });
+                        }}
+                        className="shrink-0 p-2.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {apiKeyCopied ? (
+                          <Check className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                   <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                     <button
+                      type="button"
                       onClick={() => setEditingDevice(null)}
                       className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors"
                     >
                       Cancel
                     </button>
                     <button
-                      onClick={() => {
-                        onUpdateDevice(editingDevice.id, editingDevice);
-                        setEditingDevice(null);
-                      }}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                      type="button"
+                      onClick={() => void handleUpdateDevice()}
+                      disabled={
+                        isUpdatingDevice ||
+                        !editingDevice.name.trim() ||
+                        !editingDevice.organizationId ||
+                        !editingDevice.venueId ||
+                        !editingDevice.brandId
+                      }
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
                     >
-                      Update Device
+                      {isUpdatingDevice ? 'Updating…' : 'Update Device'}
                     </button>
                   </div>
                 </div>
@@ -778,6 +855,7 @@ export function ManagerModals() {
               onClose={() => {
                 setDeletingId(null);
                 setDeleteType(null);
+                setDeleteError('');
               }}
               title="Confirm Deletion"
             >
@@ -786,36 +864,30 @@ export function ManagerModals() {
                   <Activity className="w-6 h-6 shrink-0" />
                   <p className="text-sm font-medium">Are you sure you want to delete this {deleteType}? This action cannot be undone.</p>
                 </div>
+                {deleteError && (
+                  <div className="text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+                    {deleteError}
+                  </div>
+                )}
                 <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                   <button
+                    type="button"
                     onClick={() => {
                       setDeletingId(null);
                       setDeleteType(null);
+                      setDeleteError('');
                     }}
                     className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors"
                   >
                     Cancel
                   </button>
                   <button
-                    onClick={() => {
-                      void (async () => {
-                        if (deletingId && deleteType) {
-                          try {
-                            if (deleteType === 'user') await onDeleteUser(deletingId);
-                            else if (deleteType === 'org') await onDeleteOrg(deletingId);
-                            else if (deleteType === 'venue') await onDeleteVenue(deletingId);
-                            else if (deleteType === 'device') onDeleteDevice(deletingId);
-                            setDeletingId(null);
-                            setDeleteType(null);
-                          } catch {
-                            // Keep confirm open on failure
-                          }
-                        }
-                      })();
-                    }}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors shadow-sm"
+                    type="button"
+                    onClick={() => void handleConfirmDelete()}
+                    disabled={isDeletingDevice}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50"
                   >
-                    Delete
+                    {isDeletingDevice ? 'Deleting…' : 'Delete'}
                   </button>
                 </div>
               </div>
@@ -987,6 +1059,22 @@ export function ManagerModals() {
                 </div>
               </div>
             </Modal>
+
+            {deviceToast && (
+              <div className="fixed top-4 right-4 z-[9999] animate-in fade-in slide-in-from-top-2 duration-300">
+                <div
+                  className={`px-4 py-3 rounded-xl border shadow-lg text-xs font-bold max-w-sm ${
+                    deviceToast.type === 'success'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : deviceToast.type === 'error'
+                        ? 'bg-red-50 border-red-200 text-red-800'
+                        : 'bg-blue-50 border-blue-200 text-blue-800'
+                  }`}
+                >
+                  {deviceToast.message}
+                </div>
+              </div>
+            )}
     </>
   );
 }

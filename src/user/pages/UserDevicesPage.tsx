@@ -1,24 +1,99 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useUserWorkspace } from '../context/UserWorkspaceContext';
-import { MonitorSmartphone, Plus, Edit, Trash2, Check, Copy, Building2, MapPin, Sparkles, Search, Eye, EyeOff, Zap } from 'lucide-react';
-import { getACPowerDraw } from '../../types';
+import {
+  MonitorSmartphone,
+  Plus,
+  Edit,
+  Trash2,
+  Check,
+  Copy,
+  Building2,
+  MapPin,
+  Sparkles,
+  Eye,
+  EyeOff,
+  Zap,
+  RefreshCw,
+} from 'lucide-react';
+import { getACPowerDraw, type ACUnit, type Venue } from '../../types';
 import { AC_BRANDS } from '../constants';
+import { getDevicesByVenue } from '../../api/deviceApi';
+import { getVenuesByOrganization } from '../../api/venueApi';
 
 /** User devices page — markup/CSS preserved from legacy UserView */
 export function UserDevicesPage() {
   const {
-    user, units, orgs, venues, activeTab,
-    onTabChange, onSelectUnit, onTogglePower,
-    onAddDevice, onDeleteDevice, onUpdateDevice,
-    searchQuery, setSearchQuery,
-    selectedBrandFilter, setSelectedBrandFilter,
-    selectedDeviceVenueId, setSelectedDeviceVenueId,
+    user, orgs, venues,
+    onDeleteDevice,
     deviceName, setDeviceName, acBrand, setAcBrand,
     selectedOrgId, setSelectedOrgId, selectedVenueId, setSelectedVenueId,
     editingUnitId, setEditingUnitId, revealApiKey, setRevealApiKey, copied, setCopied,
-    assignedVenues, assignedUnits, filteredUnits, currentApiKey,
-    handleEditClick, resetForm, handleSave, generateApiKey, handleCopy,
+    handleEditClick, resetForm, handleSave, handleCopy, currentApiKey,
   } = useUserWorkspace();
+
+  const [listOrgId, setListOrgId] = useState(orgs[0]?.id || '');
+  const [listVenueId, setListVenueId] = useState('');
+  const [orgVenues, setOrgVenues] = useState<Venue[]>([]);
+  const [venueDevices, setVenueDevices] = useState<ACUnit[]>([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+
+  const assignedVenueIds = user?.assignedVenueIds || [];
+
+  useEffect(() => {
+    if (!listOrgId && orgs.length > 0) {
+      setListOrgId(orgs[0].id);
+    }
+  }, [orgs, listOrgId]);
+
+  useEffect(() => {
+    let active = true;
+    setListVenueId('');
+    setOrgVenues([]);
+    setVenueDevices([]);
+    if (!listOrgId) return () => { active = false; };
+
+    getVenuesByOrganization(listOrgId)
+      .then((list) => {
+        if (!active) return;
+        const filtered =
+          assignedVenueIds.length > 0
+            ? list.filter((v) => assignedVenueIds.includes(v.id))
+            : list;
+        setOrgVenues(filtered);
+        setListVenueId(filtered[0]?.id || '');
+      })
+      .catch(() => {
+        if (!active) return;
+        setOrgVenues([]);
+      });
+
+    return () => { active = false; };
+  }, [listOrgId, assignedVenueIds.join(',')]);
+
+  useEffect(() => {
+    let active = true;
+    setVenueDevices([]);
+    if (!listVenueId) {
+      setLoadingDevices(false);
+      return () => { active = false; };
+    }
+
+    setLoadingDevices(true);
+    getDevicesByVenue(listVenueId)
+      .then((list) => {
+        if (!active) return;
+        setVenueDevices(list);
+      })
+      .catch(() => {
+        if (!active) return;
+        setVenueDevices([]);
+      })
+      .finally(() => {
+        if (active) setLoadingDevices(false);
+      });
+
+    return () => { active = false; };
+  }, [listVenueId]);
 
   return (
     <>
@@ -40,43 +115,33 @@ export function UserDevicesPage() {
                   {/* Left Section: Devices List */}
                   <div className="lg:col-span-7 bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col min-h-0 h-full overflow-hidden">
                     <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch flex-shrink-0 mb-4">
-                      {/* Search query input */}
-                      <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                          type="text"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400"
-                          placeholder="Search device name..."
-                        />
-                      </div>
-      
-                      {/* Brand select filter */}
-                      <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-100">
-                        <span className="text-[10px] font-black text-slate-400 px-1.5 uppercase tracking-wide">Brand:</span>
+                      {/* Organization filter */}
+                      <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-100 flex-1 min-w-0">
+                        <span className="text-[10px] font-black text-slate-400 px-1.5 uppercase tracking-wide shrink-0">Org:</span>
+                        <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <select
-                          value={selectedBrandFilter}
-                          onChange={(e) => setSelectedBrandFilter(e.target.value)}
-                          className="bg-transparent text-[11px] font-black text-slate-700 outline-none border-none py-1 pr-1 cursor-pointer"
+                          value={listOrgId}
+                          onChange={(e) => setListOrgId(e.target.value)}
+                          className="bg-transparent text-[11px] font-black text-slate-700 outline-none border-none py-1 pr-1 cursor-pointer min-w-0 flex-1 truncate"
                         >
-                          <option value="All">All Brands</option>
-                          {AC_BRANDS.map(brand => (
-                            <option key={brand} value={brand}>{brand}</option>
+                          {orgs.length === 0 && <option value="">No organizations</option>}
+                          {orgs.map((org) => (
+                            <option key={org.id} value={org.id}>{org.name}</option>
                           ))}
                         </select>
                       </div>
       
-                      {/* Venue select filter */}
-                      <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-100">
-                        <span className="text-[10px] font-black text-slate-400 px-1.5 uppercase tracking-wide">Venue:</span>
+                      {/* Venue filter */}
+                      <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-100 flex-1 min-w-0">
+                        <span className="text-[10px] font-black text-slate-400 px-1.5 uppercase tracking-wide shrink-0">Venue:</span>
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <select
-                          value={selectedDeviceVenueId}
-                          onChange={(e) => setSelectedDeviceVenueId(e.target.value)}
-                          className="bg-transparent text-[11px] font-black text-slate-700 outline-none border-none py-1 pr-1 cursor-pointer"
+                          value={listVenueId}
+                          onChange={(e) => setListVenueId(e.target.value)}
+                          className="bg-transparent text-[11px] font-black text-slate-700 outline-none border-none py-1 pr-1 cursor-pointer min-w-0 flex-1 truncate"
                         >
-                          <option value="all">All Venues</option>
-                          {assignedVenues.map(venue => (
+                          {orgVenues.length === 0 && <option value="">No venues</option>}
+                          {orgVenues.map((venue) => (
                             <option key={venue.id} value={venue.id}>{venue.name}</option>
                           ))}
                         </select>
@@ -85,11 +150,16 @@ export function UserDevicesPage() {
       
                     {/* Devices Card List - ONLY SCROLLER HERE */}
                     <div className="space-y-2.5 flex-1 overflow-y-auto pr-1.5 custom-scrollbar">
-                      {filteredUnits.length > 0 ? (
-                        filteredUnits.map(unit => {
-                          const venue = venues.find(v => v.id === unit.venueId);
-                          const org = orgs.find(o => o.id === venue?.orgId);
-                          const brand = (unit as any).brand || 'Daikin';
+                      {loadingDevices ? (
+                        <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-2">
+                          <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
+                          <p className="text-xs font-bold uppercase tracking-wider">Loading devices…</p>
+                        </div>
+                      ) : venueDevices.length > 0 ? (
+                        venueDevices.map(unit => {
+                          const venue = orgVenues.find(v => v.id === unit.venueId) || venues.find(v => v.id === unit.venueId);
+                          const org = orgs.find(o => o.id === venue?.orgId) || orgs.find(o => o.id === listOrgId);
+                          const brand = unit.brand || '—';
       
                           return (
                             <div
@@ -167,6 +237,7 @@ export function UserDevicesPage() {
                                   onClick={() => {
                                     if (confirm('Are you absolutely sure you want to delete this device?')) {
                                       onDeleteDevice(unit.id);
+                                      setVenueDevices((prev) => prev.filter((d) => d.id !== unit.id));
                                       if (editingUnitId === unit.id) resetForm();
                                     }
                                   }}
@@ -183,12 +254,16 @@ export function UserDevicesPage() {
                         <div className="flex flex-col items-center justify-center py-16 text-slate-400 bg-slate-50/50 border border-dashed border-slate-200 rounded-3xl">
                           <MonitorSmartphone className="w-10 h-10 text-slate-300 mb-2" />
                           <p className="font-bold text-slate-800 text-sm">No Climate Devices Found</p>
-                          <p className="text-xs text-slate-500 mt-1">Add details or filter above</p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            {listVenueId ? 'No devices for this venue yet' : 'Select organization and venue above'}
+                          </p>
                         </div>
                       )}
                     </div>
-                  </div>             {/* Right Section: Add/Edit Device form on top & API Keys display below */}
-                  <div className="lg:col-span-5 flex flex-col gap-4 min-h-0 overflow-y-auto pr-1.5 custom-scrollbar">
+                  </div>
+
+                  {/* Right Section: Add/Edit Device — hidden on mobile */}
+                  <div className="hidden lg:flex lg:col-span-5 flex-col gap-4 min-h-0 overflow-y-auto pr-1.5 custom-scrollbar">
                     
                     {/* Device Compact Form card (STAYS ON TOP) */}
                     <div className="bg-white p-4.5 rounded-3xl border border-slate-100 shadow-sm space-y-4">
@@ -290,7 +365,7 @@ export function UserDevicesPage() {
                       </div>
                     </div>
       
-                    {/* Dynamic Bottom-Right API Key card - Premium Light Amber Styling with Bigger, Bolder Typeface */}
+                    {/* Dynamic Bottom-Right API Key card */}
                     {editingUnitId && (
                       <div className="bg-gradient-to-tr from-amber-50/50 to-amber-100/30 border border-amber-200/60 p-4 rounded-3xl space-y-3 shadow-sm">
                         <div className="flex justify-between items-center">

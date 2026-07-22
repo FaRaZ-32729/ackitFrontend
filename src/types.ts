@@ -100,6 +100,12 @@ export interface ACUnit {
   brand?: string;
   hasEnergySensor?: boolean;
   capacityTon?: string;
+  /** Live / stored draw from DB (`powerConsumption`) */
+  powerConsumption?: number;
+  organizationId?: string;
+  brandId?: string;
+  /** Base64 of hardware deviceId (DB `apikey`) — read-only in UI */
+  apiKey?: string;
   mode?: string;
   fanSpeed?: string;
 }

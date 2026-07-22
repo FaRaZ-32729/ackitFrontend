@@ -11,40 +11,77 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { CustomDropdown } from '../ui/CustomDropdown';
-
-const AC_BRANDS = ['Gree', 'Daikin', 'Mitsubishi', 'Haier', 'Carrier', 'TCL', 'Kenwood', 'Orient'];
+import { getVenuesByOrganization } from '../../api/venueApi';
+import {
+  createDevice,
+  getDeviceBrandOptions,
+  type DeviceBrandOption,
+} from '../../api/deviceApi';
+import type { Venue } from '../../types';
+import axios from 'axios';
 
 interface AddDeviceOverlayPageProps {
   onClose: () => void;
 }
 
 export function AddDeviceOverlayPage({ onClose }: AddDeviceOverlayPageProps) {
-  const { setUnits, orgs, venues } = useAppContext();
+  const { setUnits, orgs } = useAppContext();
 
   // Form State
   const [name, setName] = useState('');
   const [orgId, setOrgId] = useState(orgs[0]?.id || '');
   const [venueId, setVenueId] = useState('');
-  const [brand, setBrand] = useState(AC_BRANDS[0]);
-  const [capacity, setCapacity] = useState('1.5ton');
-  const [hasEnergySensor, setHasEnergySensor] = useState(false);
+  const [brandId, setBrandId] = useState('');
+  const [capacity, setCapacity] = useState('1.5');
+  const [availableVenues, setAvailableVenues] = useState<Venue[]>([]);
+  const [brandOptions, setBrandOptions] = useState<DeviceBrandOption[]>([]);
+  const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   
   const [error, setError] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Filter venues when organization changes
-  const filteredVenues = venues.filter(v => v.orgId === orgId);
+  useEffect(() => {
+    if (!orgId && orgs.length > 0) setOrgId(orgs[0].id);
+  }, [orgId, orgs]);
 
   useEffect(() => {
-    if (filteredVenues.length > 0) {
-      setVenueId(filteredVenues[0].id);
-    } else {
-      setVenueId('');
-    }
-  }, [orgId, venues]);
+    let active = true;
+    setVenueId('');
+    setAvailableVenues([]);
+    if (!orgId) return () => { active = false; };
 
-  const handleSubmit = (e: React.FormEvent) => {
+    getVenuesByOrganization(orgId)
+      .then((list) => {
+        if (!active) return;
+        setAvailableVenues(list);
+        setVenueId(list[0]?.id || '');
+      })
+      .catch(() => {
+        if (active) setError('Failed to load venues for this organization');
+      });
+
+    return () => { active = false; };
+  }, [orgId]);
+
+  useEffect(() => {
+    let active = true;
+    getDeviceBrandOptions()
+      .then((list) => {
+        if (!active) return;
+        setBrandOptions(list);
+        setBrandId(list[0]?.id || '');
+      })
+      .catch(() => {
+        if (active) setError('Failed to load AC brands');
+      })
+      .finally(() => {
+        if (active) setIsLoadingOptions(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -61,43 +98,49 @@ export function AddDeviceOverlayPage({ onClose }: AddDeviceOverlayPageProps) {
       setError('Venue is required. Please create a venue first if none exist.');
       return;
     }
+    if (!brandId) {
+      setError('AC Brand is required. Please create a brand profile first.');
+      return;
+    }
 
     setIsSubmitting(true);
 
-    // Simulate saving delay
-    setTimeout(() => {
-      const newDevice = {
-        id: `unit-${Date.now()}`,
+    try {
+      const newDevice = await createDevice({
         name: name.trim(),
-        venueId,
-        isOn: false,
-        currentTemp: 24,
-        targetTemp: 22,
-        isLocked: false,
-        eventLocked: false,
-        hasFault: false,
-        brand,
-        hasEnergySensor,
-        capacityTon: capacity,
-        events: [],
-        energyConsumption: {
-          hourly: [{ label: '00:00', kwh: 0 }],
-          daily: [{ label: new Date().toISOString().split('T')[0], kwh: 0 }],
-          weekly: [{ label: 'Week 1', kwh: 0 }],
-          monthly: [{ label: new Date().toISOString().slice(0, 7), kwh: 0 }],
-          yearly: [{ label: new Date().getFullYear().toString(), kwh: 0 }]
-        }
-      };
-
-      setUnits(prev => [...prev, newDevice]);
-      setIsSubmitting(false);
+        organization: String(orgId),
+        venue: String(venueId),
+        brand: String(brandId),
+        capacity: Number(capacity),
+      });
+      setUnits((prev) => [...prev, newDevice]);
       setIsSuccess(true);
-
-      // Auto-close after 2 seconds
-      setTimeout(() => {
-        onClose();
-      }, 2000);
-    }, 800);
+      setTimeout(onClose, 2000);
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status;
+        const data = err.response?.data as {
+          message?: string;
+          errors?: Array<{ message: string }>;
+        };
+        const details = data?.errors?.map((e) => e.message).filter(Boolean).join(' · ');
+        const apiMessage = data?.message || '';
+        const isNameTaken =
+          status === 409 &&
+          (/already exists/i.test(apiMessage) ||
+            /name is already/i.test(apiMessage) ||
+            /name already/i.test(details || ''));
+        setError(
+          isNameTaken
+            ? 'This name is already present in this venue'
+            : details || apiMessage || err.message
+        );
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to create device');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -182,6 +225,8 @@ export function AddDeviceOverlayPage({ onClose }: AddDeviceOverlayPageProps) {
                   value={orgId}
                   onChange={setOrgId}
                   icon={Building2}
+                  placeholder="Select organization"
+                  disabled={orgs.length === 0}
                   options={orgs.map((org) => ({ value: org.id, label: org.name }))}
                 />
               </div>
@@ -197,8 +242,8 @@ export function AddDeviceOverlayPage({ onClose }: AddDeviceOverlayPageProps) {
                   icon={MapPin}
                   placeholder="No venues available"
                   options={
-                    filteredVenues.length > 0
-                      ? filteredVenues.map((v) => ({ value: v.id, label: v.name }))
+                    availableVenues.length > 0
+                      ? availableVenues.map((v) => ({ value: v.id, label: v.name }))
                       : [{ value: '', label: 'No venues available', disabled: true }]
                   }
                 />
@@ -212,10 +257,15 @@ export function AddDeviceOverlayPage({ onClose }: AddDeviceOverlayPageProps) {
                     AC Brand
                   </label>
                   <CustomDropdown
-                    value={brand}
-                    onChange={setBrand}
+                    value={brandId}
+                    onChange={setBrandId}
                     icon={Wind}
-                    options={AC_BRANDS.map((b) => ({ value: b, label: b }))}
+                    placeholder={isLoadingOptions ? 'Loading brands…' : 'No brands available'}
+                    disabled={isLoadingOptions || brandOptions.length === 0}
+                    options={brandOptions.map((brand) => ({
+                      value: brand.id,
+                      label: brand.name,
+                    }))}
                   />
                 </div>
 
@@ -229,32 +279,14 @@ export function AddDeviceOverlayPage({ onClose }: AddDeviceOverlayPageProps) {
                     onChange={setCapacity}
                     icon={Wind}
                     options={[
-                      { value: '1ton', label: '1.0 Ton' },
-                      { value: '1.5ton', label: '1.5 Ton' },
-                      { value: '2ton', label: '2.0 Ton' },
-                      { value: '2.5ton', label: '2.5 Ton' },
-                      { value: '3.5ton', label: '3.5 Ton' },
+                      { value: '1', label: '1.0 Ton' },
+                      { value: '1.5', label: '1.5 Ton' },
+                      { value: '2', label: '2.0 Ton' },
+                      { value: '2.5', label: '2.5 Ton' },
+                      { value: '3', label: '3.0 Ton' },
+                      { value: '3.5', label: '3.5 Ton' },
                     ]}
                   />
-                </div>
-              </div>
-
-              {/* Input: Energy Sensor Checkbox */}
-              <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 select-none cursor-pointer" onClick={() => setHasEnergySensor(!hasEnergySensor)}>
-                <input
-                  type="checkbox"
-                  checked={hasEnergySensor}
-                  onChange={(e) => setHasEnergySensor(e.target.checked)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="w-4 h-4 text-blue-600 bg-slate-50 border-slate-200 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer"
-                />
-                <div>
-                  <span className="text-[10px] font-black uppercase text-slate-600 tracking-wider block">
-                    Energy Monitoring
-                  </span>
-                  <p className="text-[9px] text-slate-400 font-semibold leading-tight">
-                    Equipped with advanced real-time energy sensors.
-                  </p>
                 </div>
               </div>
 
