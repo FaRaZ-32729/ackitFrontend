@@ -235,7 +235,7 @@ export const mockACUnits: ACUnit[] = [
     targetTemp: 26,
     isLocked: false,
     eventLocked: false,
-    hasFault: true,
+    hasFault: false,
     energyConsumption: {
       hourly: [{ label: '08:00', kwh: 1.1 }],
       daily: [{ label: 'Mon', kwh: 12 }],
@@ -292,7 +292,7 @@ export const mockACUnits: ACUnit[] = [
     targetTemp: 24,
     isLocked: false,
     eventLocked: false,
-    hasFault: true,
+    hasFault: false,
     energyConsumption: {
       hourly: [{ label: '08:00', kwh: 0.5 }],
       daily: [{ label: 'Mon', kwh: 5 }],

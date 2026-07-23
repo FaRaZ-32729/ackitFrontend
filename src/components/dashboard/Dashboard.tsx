@@ -1,6 +1,7 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { ACUnit, Role, Organization, Venue, ACEvent } from '../../types';
 import { useAppContext } from '../../context/AppContext';
+import { getDevicesByVenue, setDevicePower, setDeviceTemperature, setDeviceMode, setDeviceFan } from '../../api/deviceApi';
 import { 
   Power, 
   Thermometer, 
@@ -34,6 +35,30 @@ import { Modal } from '../ui/Modal';
 import { ACKitLogo } from '../ui/ACKitLogo';
 import { CustomDropdown } from '../ui/CustomDropdown';
 
+const TEMP_MIN = 16;
+const TEMP_MAX = 30;
+const TEMP_ECO = 24;
+const TEMP_DEBOUNCE_MS = 2000;
+
+function isDeviceOnline(unit: ACUnit): boolean {
+  // Missing status = treat as online (legacy/static units); real API devices set status
+  return unit.status !== 'offline';
+}
+
+/** Org/venue bulk: online devices that are NOT super-locked (lock + unlock are included) */
+function isOrgVenueBulkTarget(unit: ACUnit): boolean {
+  return isDeviceOnline(unit) && !unit.eventLocked;
+}
+
+function filterPowerTempTargets(
+  units: ACUnit[],
+  skipSuperlock: boolean
+): ACUnit[] {
+  return units.filter(
+    (u) => isDeviceOnline(u) && !(skipSuperlock && u.eventLocked)
+  );
+}
+
 interface DashboardProps {
   units: ACUnit[];
   role: Role;
@@ -63,8 +88,15 @@ export function Dashboard({
     selectedVenueId: globalVenueId, 
     setSelectedVenueId: setGlobalVenueId, 
     selectedUnitId: globalUnitId, 
-    setSelectedUnitId: setGlobalUnitId 
+    setSelectedUnitId: setGlobalUnitId,
+    selectedOrgId: globalOrgId,
+    setSelectedOrgId: setGlobalOrgId,
+    setUnits,
+    units: contextUnits,
   } = useAppContext();
+
+  // Prefer live units from context (dashboard page may pass stale/mock list)
+  const liveUnits = contextUnits.length > 0 ? contextUnits : units;
 
   const selectedVenueId = globalVenueId || 'all';
   const setSelectedVenueId = (val: string) => {
@@ -76,7 +108,7 @@ export function Dashboard({
   const [activeChartTab, setActiveChartTab] = useState<'hours' | 'energy' | 'maintenance'>('hours');
 
   // 3. Maintenance List Expansion State
-  const [expandedMaintenanceVenueId, setExpandedMaintenanceVenueId] = useState<string | null>('ven-1');
+  const [expandedMaintenanceVenueId, setExpandedMaintenanceVenueId] = useState<string | null>(null);
 
   // 4. State for Schedule Creator Form
   const [showScheduleForm, setShowScheduleForm] = useState(false);
@@ -96,20 +128,148 @@ export function Dashboard({
   const [gridDensity, setGridDensity] = useState<'standard' | 'dense'>('standard');
   const mobileArcSvgRef = useRef<SVGSVGElement>(null);
   const isDraggingMobileArc = useRef(false);
+  const [loadingOrgDevices, setLoadingOrgDevices] = useState(false);
+  /** Draft temperatures while user adjusts before the 2s debounce apply */
+  const [draftTemps, setDraftTemps] = useState<Record<string, number>>({});
+  const tempDebounceTimers = useRef<Record<string, number>>({});
+  const [bulkToast, setBulkToast] = useState<{
+    message: string;
+    type: 'error' | 'info';
+  } | null>(null);
+  const bulkToastTimer = useRef<number | null>(null);
+  const [bulkPowerPending, setBulkPowerPending] = useState(false);
 
-  // 5. Active Organization Header (usually 'org-1' which maps to SSUET_AS)
-  const activeOrg = orgs[0] || { name: 'SSUET_AS' };
+  const showBulkToast = useCallback(
+    (message: string, type: 'error' | 'info' = 'error') => {
+      if (bulkToastTimer.current) window.clearTimeout(bulkToastTimer.current);
+      setBulkToast({ message, type });
+      bulkToastTimer.current = window.setTimeout(() => {
+        setBulkToast(null);
+        bulkToastTimer.current = null;
+      }, 3500);
+    },
+    []
+  );
 
-  // 6. Filtering units based on selected venue or device
+  useEffect(() => {
+    return () => {
+      if (bulkToastTimer.current) window.clearTimeout(bulkToastTimer.current);
+    };
+  }, []);
+
+  // Default / keep valid selected organization
+  useEffect(() => {
+    if (orgs.length === 0) {
+      if (globalOrgId) setGlobalOrgId(null);
+      return;
+    }
+    const stillValid = globalOrgId && orgs.some((o) => o.id === globalOrgId);
+    if (!stillValid) {
+      setGlobalOrgId(orgs[0].id);
+    }
+  }, [orgs, globalOrgId, setGlobalOrgId]);
+
+  const activeOrg =
+    orgs.find((o) => o.id === globalOrgId) || orgs[0] || ({ id: '', name: 'Organization' } as Organization);
+
+  const orgVenues = useMemo(
+    () => (globalOrgId ? venues.filter((v) => v.orgId === globalOrgId) : venues),
+    [venues, globalOrgId]
+  );
+
+  // If selected venue is not in current org, fall back to All Venues
+  useEffect(() => {
+    if (!globalVenueId) return;
+    const ok = orgVenues.some((v) => v.id === globalVenueId);
+    if (!ok) {
+      setGlobalVenueId(null);
+      setGlobalUnitId(null);
+    }
+  }, [orgVenues, globalVenueId, setGlobalVenueId, setGlobalUnitId]);
+
+  const handleOrgChange = useCallback(
+    (orgId: string) => {
+      setGlobalOrgId(orgId);
+      setGlobalVenueId(null);
+      setGlobalUnitId(null);
+    },
+    [setGlobalOrgId, setGlobalVenueId, setGlobalUnitId]
+  );
+
+  // Load devices for venues of the active organization
+  useEffect(() => {
+    let active = true;
+    if (!globalOrgId || orgVenues.length === 0) {
+      setLoadingOrgDevices(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    setLoadingOrgDevices(true);
+    Promise.all(orgVenues.map((v) => getDevicesByVenue(v.id).catch(() => [] as ACUnit[])))
+      .then((lists) => {
+        if (!active) return;
+        const merged = lists.flat();
+        setUnits((prev) => {
+          const real = prev.filter((u) => /^[a-fA-F0-9]{24}$/.test(u.id));
+          const byId = new Map(real.map((u) => [u.id, u]));
+          // Drop devices that belong to venues of this org (refresh), keep other orgs
+          const orgVenueIds = new Set(orgVenues.map((v) => v.id));
+          for (const [id, unit] of [...byId.entries()]) {
+            if (orgVenueIds.has(unit.venueId)) byId.delete(id);
+          }
+          merged.forEach((device) => {
+            const existing = byId.get(device.id);
+            byId.set(device.id, existing ? { ...existing, ...device } : device);
+          });
+          return Array.from(byId.values());
+        });
+      })
+      .finally(() => {
+        if (active) setLoadingOrgDevices(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [globalOrgId, orgVenues, setUnits]);
+
+  // 6. Filtering units based on selected venue or device (scoped to active org)
   const selectedUnits = useMemo(() => {
+    const orgVenueIds = new Set(orgVenues.map((v) => v.id));
+    const orgScoped = liveUnits.filter((u) => orgVenueIds.has(u.venueId));
+
     if (globalUnitId) {
-      return units.filter(u => u.id === globalUnitId);
+      const fromOrg = orgScoped.filter((u) => u.id === globalUnitId);
+      if (fromOrg.length > 0) return fromOrg;
+      // Fallback: device may be selected before venueId is hydrated
+      return liveUnits.filter((u) => u.id === globalUnitId);
     }
     if (selectedVenueId === 'all') {
-      return units;
+      return orgScoped;
     }
-    return units.filter(u => u.venueId === selectedVenueId);
-  }, [units, globalUnitId, selectedVenueId]);
+    return orgScoped.filter((u) => u.venueId === selectedVenueId);
+  }, [liveUnits, globalUnitId, selectedVenueId, orgVenues]);
+
+  const orgUnits = useMemo(() => {
+    const orgVenueIds = new Set(orgVenues.map((v) => v.id));
+    return liveUnits.filter((u) => orgVenueIds.has(u.venueId));
+  }, [liveUnits, orgVenues]);
+
+  const sumLivePowerKw = useCallback((unitsList: ACUnit[]) => {
+    return Number(
+      unitsList
+        .reduce((acc, u) => acc + (Number(u.powerConsumption) || 0), 0)
+        .toFixed(2)
+    );
+  }, []);
+
+  // Live power sum for organization card (all devices in selected org)
+  const orgPowerKw = useMemo(
+    () => sumLivePowerKw(orgUnits),
+    [orgUnits, sumLivePowerKw]
+  );
 
   // Aggregate stats for selected units
   const totalUnitsCount = selectedUnits.length;
@@ -125,13 +285,52 @@ export function Dashboard({
     }, 0).toFixed(1));
   }, [selectedUnits]);
 
+  const orgTempScopeKey = `org:${globalOrgId || 'none'}`;
+  const frameTempScopeKey = globalUnitId
+    ? `device:${globalUnitId}`
+    : selectedVenueId === 'all'
+      ? orgTempScopeKey
+      : `venue:${selectedVenueId}`;
+
+  const getVenueTempScopeKey = useCallback(
+    (venueId: string) => `venue:${venueId}`,
+    []
+  );
+
+  const resolveDisplayTemp = useCallback(
+    (units: ACUnit[], scopeKey: string): number | 'Mixed' => {
+      if (draftTemps[scopeKey] != null) return draftTemps[scopeKey];
+      if (units.length === 0) return TEMP_ECO;
+      const firstTemp = units[0].targetTemp;
+      const allSame = units.every((u) => u.targetTemp === firstTemp);
+      return allSame ? firstTemp : 'Mixed';
+    },
+    [draftTemps]
+  );
+
   // Determine target temperature of selected venue (or "Mixed")
-  const targetTempState = useMemo(() => {
-    if (selectedUnits.length === 0) return 24;
-    const firstTemp = selectedUnits[0].targetTemp;
-    const allSame = selectedUnits.every(u => u.targetTemp === firstTemp);
-    return allSame ? firstTemp : 'Mixed';
-  }, [selectedUnits]);
+  const targetTempState = useMemo(
+    () => resolveDisplayTemp(selectedUnits, frameTempScopeKey),
+    [selectedUnits, frameTempScopeKey, resolveDisplayTemp]
+  );
+
+  const orgCardTempState = useMemo(
+    () => resolveDisplayTemp(orgUnits, orgTempScopeKey),
+    [orgUnits, orgTempScopeKey, resolveDisplayTemp]
+  );
+
+  // Clear draft when org/venue/device selection changes
+  useEffect(() => {
+    setDraftTemps({});
+    Object.values(tempDebounceTimers.current).forEach((id) => window.clearTimeout(id));
+    tempDebounceTimers.current = {};
+  }, [globalOrgId, selectedVenueId, globalUnitId]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(tempDebounceTimers.current).forEach((id) => window.clearTimeout(id));
+    };
+  }, []);
 
   // Determine lock status of selected venue
   const lockState = useMemo(() => {
@@ -149,35 +348,204 @@ export function Dashboard({
   const [showLockDropdown, setShowLockDropdown] = useState(false);
   const [showVenueLockDropdownId, setShowVenueLockDropdownId] = useState<string | null>(null);
 
-  // Bulk actions handlers
-  const handleBulkPowerToggle = (forceState?: boolean) => {
-    const newState = forceState !== undefined ? forceState : !selectedUnits.every(u => u.isOn);
-    selectedUnits.forEach(u => {
-      if (onUpdateDevice) {
-        onUpdateDevice(u.id, { isOn: newState });
+  const applyBulkPower = useCallback(
+    async (units: ACUnit[], turnOn: boolean, skipSuperlock = true) => {
+      const targets = filterPowerTempTargets(units, skipSuperlock);
+      if (targets.length === 0) {
+        const online = units.filter(isDeviceOnline);
+        const onlySuper =
+          skipSuperlock &&
+          online.length > 0 &&
+          online.every((u) => u.eventLocked);
+        showBulkToast(
+          onlySuper
+            ? 'Super-locked devices were skipped'
+            : 'No online devices available to control',
+          'error'
+        );
+        return;
       }
-    });
+      setBulkPowerPending(true);
+      const state: 'on' | 'off' = turnOn ? 'on' : 'off';
+      const results = await Promise.allSettled(
+        targets.map((u) => setDevicePower(u.id, state))
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) {
+        showBulkToast(
+          failed === results.length
+            ? 'Failed to send power command'
+            : `Power sent to ${results.length - failed}/${results.length} devices`,
+          failed === results.length ? 'error' : 'info'
+        );
+      }
+      // Actual isOn updates arrive via device:state socket
+      setBulkPowerPending(false);
+    },
+    [showBulkToast]
+  );
+
+  const applyBulkTemperature = useCallback(
+    async (units: ACUnit[], temperature: number, skipSuperlock = true) => {
+      const clamped = Math.max(TEMP_MIN, Math.min(TEMP_MAX, Math.round(temperature)));
+      const targets = filterPowerTempTargets(units, skipSuperlock);
+      if (targets.length === 0) {
+        const online = units.filter(isDeviceOnline);
+        const onlySuper =
+          skipSuperlock &&
+          online.length > 0 &&
+          online.every((u) => u.eventLocked);
+        showBulkToast(
+          onlySuper
+            ? 'Super-locked devices were skipped'
+            : 'No online devices available to set temperature',
+          'error'
+        );
+        return;
+      }
+      // Optimistic local update while ESP confirms over socket
+      targets.forEach((u) => {
+        if (onUpdateDevice) onUpdateDevice(u.id, { targetTemp: clamped, currentTemp: clamped });
+        else {
+          setUnits((prev) =>
+            prev.map((item) =>
+              item.id === u.id
+                ? { ...item, targetTemp: clamped, currentTemp: clamped }
+                : item
+            )
+          );
+        }
+      });
+      const results = await Promise.allSettled(
+        targets.map((u) => setDeviceTemperature(u.id, clamped))
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) {
+        showBulkToast(
+          failed === results.length
+            ? 'Failed to send temperature command'
+            : `Temp sent to ${results.length - failed}/${results.length} devices`,
+          failed === results.length ? 'error' : 'info'
+        );
+      }
+    },
+    [onUpdateDevice, setUnits, showBulkToast]
+  );
+
+  const scheduleBulkTemperature = useCallback(
+    (scopeKey: string, units: ACUnit[], temperature: number, skipSuperlock = true) => {
+      const existing = tempDebounceTimers.current[scopeKey];
+      if (existing) window.clearTimeout(existing);
+
+      tempDebounceTimers.current[scopeKey] = window.setTimeout(() => {
+        void applyBulkTemperature(units, temperature, skipSuperlock).finally(() => {
+          delete tempDebounceTimers.current[scopeKey];
+          setDraftTemps((prev) => {
+            const next = { ...prev };
+            delete next[scopeKey];
+            return next;
+          });
+        });
+      }, TEMP_DEBOUNCE_MS);
+    },
+    [applyBulkTemperature]
+  );
+
+  const handleScopeTempAdjust = useCallback(
+    (scopeKey: string, units: ACUnit[], increment: number, skipSuperlock = true) => {
+      if (units.length === 0) return;
+      const current = resolveDisplayTemp(units, scopeKey);
+
+      // Mixed → first snap UI to eco 24; further +/- (or wait 2s at 24) apply via debounce
+      if (current === 'Mixed') {
+        setDraftTemps((prev) => ({ ...prev, [scopeKey]: TEMP_ECO }));
+        scheduleBulkTemperature(scopeKey, units, TEMP_ECO, skipSuperlock);
+        return;
+      }
+
+      const next = Math.max(TEMP_MIN, Math.min(TEMP_MAX, current + increment));
+      setDraftTemps((prev) => ({ ...prev, [scopeKey]: next }));
+      scheduleBulkTemperature(scopeKey, units, next, skipSuperlock);
+    },
+    [resolveDisplayTemp, scheduleBulkTemperature]
+  );
+
+  const handleScopeTempSet = useCallback(
+    (scopeKey: string, units: ACUnit[], temperature: number, skipSuperlock = true) => {
+      if (units.length === 0) return;
+      const clamped = Math.max(TEMP_MIN, Math.min(TEMP_MAX, Math.round(temperature)));
+      setDraftTemps((prev) => ({ ...prev, [scopeKey]: clamped }));
+      scheduleBulkTemperature(scopeKey, units, clamped, skipSuperlock);
+    },
+    [scheduleBulkTemperature]
+  );
+
+  const handleScopeEco = useCallback(
+    (scopeKey: string, units: ACUnit[], skipSuperlock = true) => {
+      if (units.length === 0) return;
+      const existing = tempDebounceTimers.current[scopeKey];
+      if (existing) {
+        window.clearTimeout(existing);
+        delete tempDebounceTimers.current[scopeKey];
+      }
+      setDraftTemps((prev) => ({ ...prev, [scopeKey]: TEMP_ECO }));
+      void applyBulkTemperature(units, TEMP_ECO, skipSuperlock).finally(() => {
+        setDraftTemps((prev) => {
+          const next = { ...prev };
+          delete next[scopeKey];
+          return next;
+        });
+      });
+    },
+    [applyBulkTemperature]
+  );
+
+  // Active Control Frame — skip superlock for org/venue; allow direct control of a single device
+  const skipSuperlockForFrame = !globalUnitId;
+
+  const handleBulkPowerToggle = (forceState?: boolean) => {
+    if (bulkPowerPending) return;
+    const targets = filterPowerTempTargets(selectedUnits, skipSuperlockForFrame);
+    const newState =
+      forceState !== undefined
+        ? forceState
+        : !targets.every((u) => u.isOn);
+    void applyBulkPower(selectedUnits, newState, skipSuperlockForFrame);
   };
 
   const handleBulkTempAdjust = (increment: number) => {
-    selectedUnits.forEach(u => {
-      let currentTarget = u.targetTemp;
-      let nextTarget = currentTarget + increment;
-      if (nextTarget < 16) nextTarget = 16;
-      if (nextTarget > 31) nextTarget = 31;
-      if (onUpdateDevice) {
-        onUpdateDevice(u.id, { targetTemp: nextTarget });
-      }
-    });
+    handleScopeTempAdjust(
+      frameTempScopeKey,
+      selectedUnits,
+      increment,
+      skipSuperlockForFrame
+    );
   };
 
   const handleBulkTempSet = (temp: number) => {
-    const clamped = Math.max(16, Math.min(31, Math.round(temp)));
-    selectedUnits.forEach(u => {
-      if (onUpdateDevice) {
-        onUpdateDevice(u.id, { targetTemp: clamped });
-      }
-    });
+    handleScopeTempSet(
+      frameTempScopeKey,
+      selectedUnits,
+      temp,
+      skipSuperlockForFrame
+    );
+  };
+
+  const handleBulkEco = () => {
+    handleScopeEco(frameTempScopeKey, selectedUnits, skipSuperlockForFrame);
+  };
+
+  const handleOrgPowerToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (bulkPowerPending) return;
+    const targets = orgUnits.filter(isOrgVenueBulkTarget);
+    const allOn = targets.length > 0 && targets.every((u) => u.isOn);
+    void applyBulkPower(orgUnits, !allOn, true);
+  };
+
+  const handleOrgTempAdjust = (increment: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    handleScopeTempAdjust(orgTempScopeKey, orgUnits, increment, true);
   };
 
   const tempFromMobileArcPoint = (clientX: number, clientY: number): number | null => {
@@ -205,10 +573,16 @@ export function Dashboard({
       progress = deg < 90 ? 1 : 0;
     }
     progress = Math.max(0, Math.min(1, progress));
-    return Math.round(16 + progress * (31 - 16));
+    return Math.round(TEMP_MIN + progress * (TEMP_MAX - TEMP_MIN));
   };
 
-  const isMobilePowerOn = selectedUnits.length > 0 && selectedUnits.every(u => u.isOn);
+  const framePowerTargets = filterPowerTempTargets(
+    selectedUnits,
+    skipSuperlockForFrame
+  );
+
+  const isMobilePowerOn =
+    framePowerTargets.length > 0 && framePowerTargets.every((u) => u.isOn);
 
   const handleMobileArcPointerDown = (e: React.PointerEvent) => {
     if (!isMobilePowerOn) return;
@@ -248,33 +622,24 @@ export function Dashboard({
     setShowLockDropdown(false);
   };
 
-  // Bulk actions for individual venues from grid cards
+  // Bulk actions for individual venues from grid cards — never touch super-locked devices
   const handleVenuePowerToggle = (venueId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const venueUnits = units.filter(u => u.venueId === venueId);
-    const anyOn = venueUnits.some(u => u.isOn);
-    venueUnits.forEach(u => {
-      if (onUpdateDevice) {
-        onUpdateDevice(u.id, { isOn: !anyOn });
-      }
-    });
+    if (bulkPowerPending) return;
+    const venueUnits = liveUnits.filter((u) => u.venueId === venueId);
+    const targets = venueUnits.filter(isOrgVenueBulkTarget);
+    const anyOn = targets.some((u) => u.isOn);
+    void applyBulkPower(venueUnits, !anyOn, true);
   };
 
   const handleVenueTempAdjust = (venueId: string, increment: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    const venueUnits = units.filter(u => u.venueId === venueId);
-    venueUnits.forEach(u => {
-      let nextTarget = u.targetTemp + increment;
-      if (nextTarget < 16) nextTarget = 16;
-      if (nextTarget > 31) nextTarget = 31;
-      if (onUpdateDevice) {
-        onUpdateDevice(u.id, { targetTemp: nextTarget });
-      }
-    });
+    const venueUnits = liveUnits.filter((u) => u.venueId === venueId);
+    handleScopeTempAdjust(getVenueTempScopeKey(venueId), venueUnits, increment, true);
   };
 
   const handleVenueLockChange = (venueId: string, status: 'Unlocked' | 'Locked' | 'Super Locked') => {
-    const venueUnits = units.filter(u => u.venueId === venueId);
+    const venueUnits = liveUnits.filter(u => u.venueId === venueId);
     venueUnits.forEach(u => {
       if (onUpdateDevice) {
         const isLocked = status !== 'Unlocked';
@@ -285,20 +650,89 @@ export function Dashboard({
     setShowVenueLockDropdownId(null);
   };
 
-  const handleBulkModeChange = (mode: string) => {
-    selectedUnits.forEach(u => {
-      if (onUpdateDevice) {
-        onUpdateDevice(u.id, { ...u, brand: (u as any).brand || 'Daikin', mode } as any);
+  const handleBulkModeChange = (modeLabel: string) => {
+    const mode = modeLabel.toLowerCase() as 'cool' | 'heat' | 'dry' | 'fan' | 'auto';
+    const targets = filterPowerTempTargets(selectedUnits, skipSuperlockForFrame);
+    if (targets.length === 0) {
+      showBulkToast('No online devices available for mode control', 'error');
+      return;
+    }
+
+    void (async () => {
+      const results = await Promise.allSettled(
+        targets.map(async (u) => {
+          const result = await setDeviceMode(u.id, mode);
+          if (result.applied && onUpdateDevice) {
+            onUpdateDevice(u.id, { mode: modeLabel });
+          }
+          return result;
+        })
+      );
+
+      const applied = results.filter(
+        (r) => r.status === 'fulfilled' && r.value.applied
+      ).length;
+      const skipped = results.filter(
+        (r) => r.status === 'fulfilled' && r.value.skipped
+      ).length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
+
+      if (applied === 0 && skipped > 0 && failed === 0) {
+        showBulkToast('No devices have this mode IR command', 'info');
+      } else if (skipped > 0 || failed > 0) {
+        showBulkToast(
+          `Mode set on ${applied}/${targets.length} devices` +
+            (skipped ? ` · ${skipped} skipped (no IR)` : '') +
+            (failed ? ` · ${failed} failed` : ''),
+          failed === targets.length ? 'error' : 'info'
+        );
       }
-    });
+    })();
   };
 
-  const handleBulkFanSpeedChange = (fanSpeed: string) => {
-    selectedUnits.forEach(u => {
-      if (onUpdateDevice) {
-        onUpdateDevice(u.id, { ...u, brand: (u as any).brand || 'Daikin', fanSpeed } as any);
+  const handleBulkFanSpeedChange = (fanLabel: string) => {
+    const fan = fanLabel.toLowerCase() as
+      | 'low'
+      | 'medium'
+      | 'high'
+      | 'ultra'
+      | 'turbo';
+    const targets = filterPowerTempTargets(selectedUnits, skipSuperlockForFrame);
+    if (targets.length === 0) {
+      showBulkToast('No online devices available for fan control', 'error');
+      return;
+    }
+
+    void (async () => {
+      const results = await Promise.allSettled(
+        targets.map(async (u) => {
+          const result = await setDeviceFan(u.id, fan);
+          if (result.applied && onUpdateDevice) {
+            onUpdateDevice(u.id, { fanSpeed: fanLabel });
+          }
+          return result;
+        })
+      );
+
+      const applied = results.filter(
+        (r) => r.status === 'fulfilled' && r.value.applied
+      ).length;
+      const skipped = results.filter(
+        (r) => r.status === 'fulfilled' && r.value.skipped
+      ).length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
+
+      if (applied === 0 && skipped > 0 && failed === 0) {
+        showBulkToast('No devices have this fan IR command', 'info');
+      } else if (skipped > 0 || failed > 0) {
+        showBulkToast(
+          `Fan set on ${applied}/${targets.length} devices` +
+            (skipped ? ` · ${skipped} skipped (no IR)` : '') +
+            (failed ? ` · ${failed} failed` : ''),
+          failed === targets.length ? 'error' : 'info'
+        );
       }
-    });
+    })();
   };
 
   // Add event/schedule for selected venue
@@ -378,8 +812,8 @@ export function Dashboard({
 
   // Chart data calculation
   const chartData = useMemo(() => {
-    return venues.map(v => {
-      const venueUnits = units.filter(u => u.venueId === v.id);
+    return orgVenues.map(v => {
+      const venueUnits = liveUnits.filter(u => u.venueId === v.id);
       
       // Calculate Hours
       const activeCount = venueUnits.filter(u => u.isOn).length;
@@ -401,7 +835,7 @@ export function Dashboard({
         'Need maintenance': faultsValue,
       };
     });
-  }, [units, venues]);
+  }, [liveUnits, orgVenues]);
 
   // Time Formatter for AM/PM format matching image (e.g. 10:30 PM)
   const formatTimeAMPM = (timeStr: string) => {
@@ -434,6 +868,22 @@ export function Dashboard({
 
   return (
     <div className="w-full h-full relative overflow-hidden flex flex-col">
+      <AnimatePresence>
+        {bulkToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className={`fixed top-16 lg:top-6 left-4 right-4 sm:left-auto sm:right-6 sm:w-auto z-[9999] px-4 py-3 rounded-2xl shadow-xl border flex items-center gap-3 backdrop-blur ${
+              bulkToast.type === 'error'
+                ? 'bg-red-50 border-red-200 text-red-800'
+                : 'bg-blue-50 border-blue-200 text-blue-800'
+            }`}
+          >
+            <span className="text-xs font-bold">{bulkToast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {/* DESKTOP DASHBOARD VIEW */}
       <div className="hidden lg:flex w-full h-full flex-col xl:flex-row gap-4 max-w-full px-2.5 md:px-4 py-2 md:py-3 bg-slate-50/10 overflow-hidden">
@@ -443,26 +893,37 @@ export function Dashboard({
         
         {/* Dynamic Organization Title Header with Space-saving Density Selector */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white px-5 py-4 rounded-3xl border border-slate-100 shadow-sm gap-4">
-          <div>
+          <div className="min-w-0 flex-1">
             <span className="text-[10px] font-black uppercase text-blue-600 tracking-widest block mb-0.5">Campus Air Control</span>
-            <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+            <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2 min-w-0">
               {globalUnitId ? (
                 <>
-                  <MonitorSmartphone className="w-6 h-6 text-blue-600" />
-                  Device: {selectedUnits[0]?.name || 'Device'}
+                  <MonitorSmartphone className="w-6 h-6 text-blue-600 shrink-0" />
+                  <span className="truncate">Device: {selectedUnits[0]?.name || 'Device'}</span>
                 </>
               ) : globalVenueId ? (
                 <>
-                  <MapPin className="w-6 h-6 text-blue-600" />
-                  Venue: {venues.find(v => v.id === globalVenueId)?.name?.replace('_', ' ') || 'Venue'}
+                  <MapPin className="w-6 h-6 text-blue-600 shrink-0" />
+                  <span className="truncate">Venue: {orgVenues.find(v => v.id === globalVenueId)?.name || 'Venue'}</span>
                 </>
               ) : (
                 <>
-                  <Building2 className="w-6 h-6 text-blue-600" />
-                  Organization: {activeOrg.name}
+                  <Building2 className="w-6 h-6 text-blue-600 shrink-0" />
+                  <span className="truncate">Organization: {activeOrg.name}</span>
                 </>
               )}
             </h1>
+            {orgs.length > 1 && !globalUnitId && (
+              <div className="mt-3 max-w-xs">
+                <CustomDropdown
+                  icon={Building2}
+                  value={activeOrg.id || ''}
+                  onChange={handleOrgChange}
+                  placeholder="Select organization"
+                  options={orgs.map((org) => ({ value: org.id, label: org.name }))}
+                />
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             {/* Grid Density Selector */}
@@ -491,11 +952,11 @@ export function Dashboard({
               </button>
             </div>
 
-            {/* Notifications Bell Dropdown (Climate Smart Recommendations) */}
+            {/* Notifications Bell — real device health alerts */}
             <div className="relative">
               {(() => {
-                const warmUnits = units.filter(u => u.isOn && u.targetTemp < 23);
-                const hasWarmUnits = warmUnits.length > 0;
+                const alertUnits = orgUnits.filter((u) => u.hasFault);
+                const hasAlerts = alertUnits.length > 0;
 
                 return (
                   <>
@@ -507,12 +968,12 @@ export function Dashboard({
                           ? 'bg-blue-50 border-blue-200 text-blue-600' 
                           : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200/80'
                       }`}
-                      title="System Notifications"
+                      title="System Alerts"
                     >
                       <Bell className="w-5 h-5" />
-                      {hasWarmUnits && (
-                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center text-[8px] font-black text-white animate-bounce">
-                          {warmUnits.length}
+                      {hasAlerts && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[8px] font-black text-white animate-bounce">
+                          {alertUnits.length}
                         </span>
                       )}
                     </button>
@@ -520,7 +981,7 @@ export function Dashboard({
                     {showNotifications && (
                       <div className="absolute right-0 mt-2.5 w-80 bg-white rounded-3xl shadow-xl border border-slate-100 p-4 z-50 space-y-3">
                         <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Climate Alerts</span>
+                          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Alerts</span>
                           <button 
                             onClick={() => setShowNotifications(false)}
                             className="text-slate-400 hover:text-slate-600 text-xs font-bold"
@@ -529,39 +990,50 @@ export function Dashboard({
                           </button>
                         </div>
 
-                        {hasWarmUnits ? (
-                          <div className="space-y-3">
-                            <div className="flex items-start gap-2.5">
-                              <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg shrink-0 mt-0.5">
-                                <Sparkles className="w-4 h-4" />
-                              </div>
-                              <div>
-                                <p className="text-[10px] font-black text-slate-800 uppercase tracking-wider">Smart Recommendation</p>
-                                <p className="text-[11px] text-slate-600 font-medium mt-1 leading-relaxed">
-                                  {warmUnits.length} SSUET AC Units are operating below 23°C. Increase them to 24°C to decrease energy consumption up to 12.8%.
-                                </p>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                units.forEach(u => {
-                                  if (u.targetTemp < 24 && onUpdateDevice) {
-                                    onUpdateDevice(u.id, { targetTemp: 24 });
-                                  }
-                                });
-                                setShowNotifications(false);
-                              }}
-                              className="w-full py-2.5 bg-slate-950 text-white hover:bg-slate-900 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all text-center cursor-pointer shadow-sm"
-                            >
-                              Optimize Now
-                            </button>
+                        {hasAlerts ? (
+                          <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-0.5">
+                            {alertUnits.map((unit) => {
+                              const venueName =
+                                orgVenues.find((v) => v.id === unit.venueId)?.name ||
+                                'Venue';
+                              const reason =
+                                unit.healthAlert ||
+                                (typeof unit.ventTemperature === 'number'
+                                  ? `Vent ${unit.ventTemperature.toFixed(1)}°C above set ${unit.targetTemp}°C`
+                                  : 'Vent temperature above set point');
+                              return (
+                                <button
+                                  key={unit.id}
+                                  type="button"
+                                  onClick={() => {
+                                    onSelectUnit(unit.id);
+                                    setShowNotifications(false);
+                                  }}
+                                  className="w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl hover:bg-red-50/80 border border-transparent hover:border-red-100 transition-all cursor-pointer"
+                                >
+                                  <div className="p-1.5 bg-red-50 text-red-600 rounded-lg shrink-0 mt-0.5">
+                                    <AlertTriangle className="w-4 h-4" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-[10px] font-black text-slate-800 uppercase tracking-wider truncate">
+                                      {unit.name}
+                                    </p>
+                                    <p className="text-[9px] text-slate-400 font-bold mt-0.5 truncate">
+                                      {venueName}
+                                    </p>
+                                    <p className="text-[11px] text-amber-700 font-medium mt-1 leading-snug">
+                                      {reason}
+                                    </p>
+                                  </div>
+                                </button>
+                              );
+                            })}
                           </div>
                         ) : (
                           <div className="py-4 text-center">
                             <Check className="w-8 h-8 text-emerald-500 mx-auto mb-1.5" />
-                            <p className="text-[10px] text-slate-500 font-black uppercase tracking-wider">All systems optimal</p>
-                            <p className="text-[10px] text-slate-400 mt-1">All active climate zones are operating with recommended eco energy-efficient configurations.</p>
+                            <p className="text-[10px] text-slate-500 font-black uppercase tracking-wider">No active alerts</p>
+                            <p className="text-[10px] text-slate-400 mt-1">All devices are healthy.</p>
                           </div>
                         )}
                       </div>
@@ -599,21 +1071,19 @@ export function Dashboard({
                   
                   {/* Switch Slider */}
                   <div 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const allUnitsOn = units.every(u => u.isOn);
-                      units.forEach(u => {
-                        if (onUpdateDevice) onUpdateDevice(u.id, { isOn: !allUnitsOn });
-                      });
-                    }}
+                    onClick={handleOrgPowerToggle}
                     className={`w-11 h-6 rounded-full transition-colors relative flex items-center p-1 cursor-pointer ${
-                      units.every(u => u.isOn) 
+                      orgUnits.filter(isOrgVenueBulkTarget).length > 0 &&
+                      orgUnits.filter(isOrgVenueBulkTarget).every((u) => u.isOn)
                         ? 'bg-emerald-500' 
                         : selectedVenueId === 'all' ? 'bg-blue-800' : 'bg-slate-200'
                     }`}
                   >
                     <div className={`w-4.5 h-4.5 rounded-full bg-white shadow-sm transform transition-transform ${
-                      units.every(u => u.isOn) ? 'translate-x-5' : 'translate-x-0'
+                      orgUnits.filter(isOrgVenueBulkTarget).length > 0 &&
+                      orgUnits.filter(isOrgVenueBulkTarget).every((u) => u.isOn)
+                        ? 'translate-x-5'
+                        : 'translate-x-0'
                     }`} />
                   </div>
                 </div>
@@ -622,13 +1092,7 @@ export function Dashboard({
                 <div className="flex items-center gap-3 my-2">
                   <button 
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      units.forEach(u => {
-                        let next = Math.max(16, u.targetTemp - 1);
-                        if (onUpdateDevice) onUpdateDevice(u.id, { targetTemp: next });
-                      });
-                    }}
+                    onClick={(e) => handleOrgTempAdjust(-1, e)}
                     className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
                       selectedVenueId === 'all' 
                         ? 'bg-blue-500/40 hover:bg-blue-500/60 text-white' 
@@ -638,17 +1102,11 @@ export function Dashboard({
                     -
                   </button>
                   <span className="text-xl font-black min-w-[50px] text-center tracking-tight leading-none">
-                    {units.every(u => u.targetTemp === units[0]?.targetTemp) ? `${units[0]?.targetTemp}°` : 'Mixed'}
+                    {orgCardTempState === 'Mixed' ? 'Mixed' : orgUnits.length ? `${orgCardTempState}°` : '—'}
                   </span>
                   <button 
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      units.forEach(u => {
-                        let next = Math.min(31, u.targetTemp + 1);
-                        if (onUpdateDevice) onUpdateDevice(u.id, { targetTemp: next });
-                      });
-                    }}
+                    onClick={(e) => handleOrgTempAdjust(1, e)}
                     className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
                       selectedVenueId === 'all' 
                         ? 'bg-blue-500/40 hover:bg-blue-500/60 text-white' 
@@ -664,34 +1122,45 @@ export function Dashboard({
               <div className="flex justify-between items-center mt-3 border-t pt-2.5 border-slate-100/10">
                 <span className={`text-xs font-bold flex items-center gap-1 ${selectedVenueId === 'all' ? 'text-blue-100' : 'text-slate-500'}`}>
                   <Activity className="w-3.5 h-3.5 text-amber-500" />
-                  {units.filter(u => u.isOn).length} ON / {units.length}
+                  {orgUnits.filter(u => u.isOn).length} ON / {orgUnits.length}
                 </span>
                 <span className={`text-xs font-black ${selectedVenueId === 'all' ? 'text-yellow-300' : 'text-blue-600'}`}>
-                  {totalEnergy} kW
+                  {orgPowerKw.toFixed(2)} kW
                 </span>
               </div>
             </div>
 
             {/* 2. DYNAMIC VENUES CARDS */}
-            {venues.map(v => {
+            {orgVenues.length === 0 && (
+              <div className="p-5 rounded-3xl border border-dashed border-slate-200 bg-slate-50 h-[180px] w-[280px] shrink-0 flex items-center justify-center">
+                <p className="text-xs font-bold text-slate-400 text-center px-4">
+                  {loadingOrgDevices ? 'Loading…' : 'No venues in this organization yet'}
+                </p>
+              </div>
+            )}
+            {orgVenues.map(v => {
               const isSelected = selectedVenueId === v.id;
-              const venueUnits = units.filter(u => u.venueId === v.id);
+              const venueUnits = liveUnits.filter(u => u.venueId === v.id);
               const activeCount = venueUnits.filter(u => u.isOn).length;
               const hasFault = venueUnits.some(u => u.hasFault);
               const isAllOn = venueUnits.every(u => u.isOn) && venueUnits.length > 0;
               const isAllLocked = venueUnits.every(u => u.isLocked) && venueUnits.length > 0;
               const firstUnit = venueUnits[0];
 
-              // Target temp representation
-              const venueTargetTemp = venueUnits.length > 0 && venueUnits.every(u => u.targetTemp === venueUnits[0].targetTemp)
-                ? `${venueUnits[0].targetTemp}°`
-                : 'Mixed';
+              // Target temp representation (includes draft while adjusting)
+              const venueTempValue = resolveDisplayTemp(
+                venueUnits,
+                getVenueTempScopeKey(v.id)
+              );
+              const venueTargetTemp =
+                venueTempValue === 'Mixed'
+                  ? 'Mixed'
+                  : venueUnits.length
+                    ? `${venueTempValue}°`
+                    : '—';
 
-              // Energy summing
-              const venueEnergy = Number(venueUnits.reduce((acc, u) => {
-                const lastMonthData = u.energyConsumption?.monthly;
-                return acc + (lastMonthData && lastMonthData.length > 0 ? lastMonthData[lastMonthData.length - 1].kwh : 12);
-              }, 0).toFixed(1));
+              // Live power sum for this venue's devices
+              const venuePowerKw = sumLivePowerKw(venueUnits);
 
               return (
                 <div 
@@ -773,7 +1242,7 @@ export function Dashboard({
                     )}
 
                     <span className="text-xs font-black text-slate-800 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">
-                      {venueEnergy} kW
+                      {venuePowerKw.toFixed(2)} kW
                     </span>
                   </div>
                 </div>
@@ -797,9 +1266,11 @@ export function Dashboard({
                   Global Override
                 </span>
                 <div>
-                  <h3 className="text-sm font-black tracking-tight leading-none">ALL SSUET CAMPUS VENUES</h3>
+                  <h3 className="text-sm font-black tracking-tight leading-none">
+                    ALL {activeOrg.name.toUpperCase()} VENUES
+                  </h3>
                   <span className={`text-[9px] font-extrabold mt-1.5 block uppercase tracking-wide ${selectedVenueId === 'all' ? 'text-blue-100' : 'text-slate-400'}`}>
-                    {units.filter(u => u.isOn).length} ON / {units.length} Devices Active
+                    {orgUnits.filter(u => u.isOn).length} ON / {orgUnits.length} Devices Active
                   </span>
                 </div>
               </div>
@@ -809,13 +1280,7 @@ export function Dashboard({
                 <div className="flex items-center gap-2">
                   <button 
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      units.forEach(u => {
-                        let next = Math.max(16, u.targetTemp - 1);
-                        if (onUpdateDevice) onUpdateDevice(u.id, { targetTemp: next });
-                      });
-                    }}
+                    onClick={(e) => handleOrgTempAdjust(-1, e)}
                     className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all text-xs font-black ${
                       selectedVenueId === 'all' 
                         ? 'bg-blue-500/40 hover:bg-blue-500/60 text-white' 
@@ -825,17 +1290,11 @@ export function Dashboard({
                     -
                   </button>
                   <span className="text-xs font-black min-w-[36px] text-center tracking-tight">
-                    {units.every(u => u.targetTemp === units[0]?.targetTemp) ? `${units[0]?.targetTemp}°` : 'Mixed'}
+                    {orgCardTempState === 'Mixed' ? 'Mixed' : orgUnits.length ? `${orgCardTempState}°` : '—'}
                   </span>
                   <button 
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      units.forEach(u => {
-                        let next = Math.min(31, u.targetTemp + 1);
-                        if (onUpdateDevice) onUpdateDevice(u.id, { targetTemp: next });
-                      });
-                    }}
+                    onClick={(e) => handleOrgTempAdjust(1, e)}
                     className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all text-xs font-black ${
                       selectedVenueId === 'all' 
                         ? 'bg-blue-500/40 hover:bg-blue-500/60 text-white' 
@@ -848,26 +1307,24 @@ export function Dashboard({
 
                 <div className="flex items-center gap-4">
                   <span className={`text-[10px] font-black px-2.5 py-1 rounded-xl ${selectedVenueId === 'all' ? 'bg-yellow-400/20 text-yellow-300' : 'bg-slate-150 text-slate-600'}`}>
-                    {totalEnergy} kW
+                    {orgPowerKw.toFixed(2)} kW
                   </span>
                   
                   {/* Switch Slider */}
                   <div 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const allUnitsOn = units.every(u => u.isOn);
-                      units.forEach(u => {
-                        if (onUpdateDevice) onUpdateDevice(u.id, { isOn: !allUnitsOn });
-                      });
-                    }}
+                    onClick={handleOrgPowerToggle}
                     className={`w-10 h-5.5 rounded-full transition-colors relative flex items-center p-0.5 cursor-pointer ${
-                      units.every(u => u.isOn) 
+                      orgUnits.filter(isOrgVenueBulkTarget).length > 0 &&
+                      orgUnits.filter(isOrgVenueBulkTarget).every((u) => u.isOn)
                         ? 'bg-emerald-500' 
                         : selectedVenueId === 'all' ? 'bg-blue-800' : 'bg-slate-200'
                     }`}
                   >
                     <div className={`w-4 h-4 rounded-full bg-white shadow-sm transform transition-transform ${
-                      units.every(u => u.isOn) ? 'translate-x-4.5' : 'translate-x-0'
+                      orgUnits.filter(isOrgVenueBulkTarget).length > 0 &&
+                      orgUnits.filter(isOrgVenueBulkTarget).every((u) => u.isOn)
+                        ? 'translate-x-4.5'
+                        : 'translate-x-0'
                     }`} />
                   </div>
                 </div>
@@ -875,22 +1332,26 @@ export function Dashboard({
             </div>
 
             {/* DYNAMIC VENUES DENSE LIST ROWS */}
-            {venues.map(v => {
+            {orgVenues.map(v => {
               const isSelected = selectedVenueId === v.id;
-              const venueUnits = units.filter(u => u.venueId === v.id);
+              const venueUnits = liveUnits.filter(u => u.venueId === v.id);
               const activeCount = venueUnits.filter(u => u.isOn).length;
               const hasFault = venueUnits.some(u => u.hasFault);
               const isAllOn = venueUnits.every(u => u.isOn) && venueUnits.length > 0;
               const firstUnit = venueUnits[0];
 
-              const venueTargetTemp = venueUnits.length > 0 && venueUnits.every(u => u.targetTemp === venueUnits[0].targetTemp)
-                ? `${venueUnits[0].targetTemp}°`
-                : 'Mixed';
+              const venueTempValue = resolveDisplayTemp(
+                venueUnits,
+                getVenueTempScopeKey(v.id)
+              );
+              const venueTargetTemp =
+                venueTempValue === 'Mixed'
+                  ? 'Mixed'
+                  : venueUnits.length
+                    ? `${venueTempValue}°`
+                    : '—';
 
-              const venueEnergy = Number(venueUnits.reduce((acc, u) => {
-                const lastMonthData = u.energyConsumption?.monthly;
-                return acc + (lastMonthData && lastMonthData.length > 0 ? lastMonthData[lastMonthData.length - 1].kwh : 12);
-              }, 0).toFixed(1));
+              const venuePowerKw = sumLivePowerKw(venueUnits);
 
               return (
                 <div 
@@ -941,7 +1402,7 @@ export function Dashboard({
 
                     <div className="flex items-center gap-3.5">
                       <span className="text-[10px] font-black text-slate-800 bg-blue-50/50 px-2 py-0.5 rounded-lg border border-blue-100">
-                        {venueEnergy} kW
+                        {venuePowerKw.toFixed(2)} kW
                       </span>
 
                       {/* Switch Toggler */}
@@ -975,14 +1436,14 @@ export function Dashboard({
                 </div>
                 <div>
                   <h3 className="text-base font-black text-slate-900 tracking-tight">Need Maintenance</h3>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Alert Center • Controls Active</p>
+                  <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Vent temp & device health alerts</p>
                 </div>
               </div>
 
               {/* Accordion / List of alerts */}
               <div className="space-y-2">
-                {venues.map(v => {
-                  const venueUnits = units.filter(u => u.venueId === v.id);
+                {orgVenues.map(v => {
+                  const venueUnits = liveUnits.filter(u => u.venueId === v.id);
                   const faultyUnits = venueUnits.filter(u => u.hasFault);
                   const faultCount = faultyUnits.length;
                   const isExpanded = expandedMaintenanceVenueId === v.id;
@@ -1024,21 +1485,27 @@ export function Dashboard({
                             className="bg-white border-t border-slate-100 px-4 py-2.5 divide-y divide-slate-50"
                           >
                             {faultCount > 0 ? (
-                              faultyUnits.map(unit => (
-                                <div key={unit.id} className="py-2 flex justify-between items-center">
-                                  <div>
-                                    <p className="text-xs font-black text-slate-800">{unit.name}</p>
-                                    <p className="text-[9px] font-mono text-slate-500 font-bold mt-0.5 text-amber-600">Sensor Fault • Control Active & Functional</p>
+                              faultyUnits.map(unit => {
+                                const reason =
+                                  unit.healthAlert ||
+                                  (typeof unit.ventTemperature === 'number'
+                                    ? `Vent ${unit.ventTemperature.toFixed(1)}°C above set ${unit.targetTemp}°C`
+                                    : 'Vent temperature above set point');
+                                return (
+                                <div key={unit.id} className="py-2 flex justify-between items-center gap-2">
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-black text-slate-800 truncate">{unit.name}</p>
+                                    <p className="text-[9px] font-medium mt-0.5 text-amber-600 leading-snug">{reason}</p>
                                   </div>
                                   <button 
                                     onClick={() => onSelectUnit(unit.id)}
-                                    className="p-1.5 bg-red-50 hover:bg-red-100 rounded-lg text-red-600 transition-all text-[10px] font-black uppercase"
-                                    title="Go to device diagnostics"
+                                    className="p-1.5 bg-red-50 hover:bg-red-100 rounded-lg text-red-600 transition-all text-[10px] font-black uppercase shrink-0"
+                                    title="Go to device"
                                   >
-                                    Fix
+                                    View
                                   </button>
                                 </div>
-                              ))
+                              );})
                             ) : (
                               <p className="text-[11px] text-slate-400 py-2 italic font-bold">All hardware healthy in this venue.</p>
                             )}
@@ -1122,7 +1589,7 @@ export function Dashboard({
 
             <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-4 pt-2.5 border-t border-slate-50">
               <span>Updated: Just Now</span>
-              <span>Total Campuses: 1</span>
+              <span>Venues: {orgVenues.length}</span>
             </div>
           </div>
         </div>
@@ -1143,7 +1610,7 @@ export function Dashboard({
                 </span>
                 <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-1.5">
                   <Gauge className="w-5.5 h-5.5 text-blue-600 animate-pulse" />
-                  {selectedVenueId === 'all' ? 'All SSUET Venues' : venues.find(v => v.id === selectedVenueId)?.name || 'SSUET_AF'}
+                  {selectedVenueId === 'all' ? `All ${activeOrg.name} Venues` : orgVenues.find(v => v.id === selectedVenueId)?.name || 'Venue'}
                 </h2>
               </div>
 
@@ -1236,7 +1703,7 @@ export function Dashboard({
                     stroke="url(#blueGradient)" 
                     strokeWidth="10" 
                     strokeDasharray="578" 
-                    strokeDashoffset={578 - (578 * (typeof targetTempState === 'number' ? targetTempState - 12 : 14)) / 20} 
+                    strokeDashoffset={578 - (578 * (typeof targetTempState === 'number' ? targetTempState - TEMP_MIN : TEMP_ECO - TEMP_MIN)) / (TEMP_MAX - TEMP_MIN)} 
                     fill="transparent" 
                     strokeLinecap="round"
                   />
@@ -1271,12 +1738,7 @@ export function Dashboard({
                   <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-1">°C Climate</p>
 
                   <button 
-                    onClick={() => {
-                      // auto adjust all units to eco temperature (24 C)
-                      selectedUnits.forEach(u => {
-                        if (onUpdateDevice) onUpdateDevice(u.id, { targetTemp: 24, isOn: true });
-                      });
-                    }}
+                    onClick={handleBulkEco}
                     className="mt-2 text-[10px] font-black text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-full border border-blue-200 transition-colors"
                   >
                     Auto Adjust Eco
@@ -1285,7 +1747,7 @@ export function Dashboard({
 
                 {/* Bound Labels */}
                 <span className="absolute bottom-3 left-3 text-[10px] font-black text-slate-400">16°C</span>
-                <span className="absolute bottom-3 right-3 text-[10px] font-black text-slate-400">31°C</span>
+                <span className="absolute bottom-3 right-3 text-[10px] font-black text-slate-400">30°C</span>
               </div>
                    {/* CONTROL ROW (Power, Mode, Fan) */}
             <div className="grid grid-cols-3 gap-2.5 mt-4">
@@ -1293,16 +1755,19 @@ export function Dashboard({
               <div className="space-y-1.5 relative">
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block truncate" title="Power">Power</label>
                 {(() => {
-                  const isBulkOn = selectedUnits.length > 0 && selectedUnits.some(u => u.isOn);
+                  const onlineSelected = framePowerTargets;
+                  const isBulkOn =
+                    onlineSelected.length > 0 && onlineSelected.some((u) => u.isOn);
                   return (
                     <button
                       type="button"
+                      disabled={bulkPowerPending || onlineSelected.length === 0}
                       onClick={() => handleBulkPowerToggle(!isBulkOn)}
                       className={`w-full py-3 px-1.5 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all duration-300 flex justify-center items-center gap-1 shadow-sm border cursor-pointer h-11 ${
                         isBulkOn
                           ? 'bg-emerald-500 hover:bg-emerald-600 border-emerald-500 text-white shadow-emerald-500/10'
                           : 'bg-red-500 hover:bg-red-600 border-red-500 text-white shadow-red-500/10'
-                      }`}
+                      } ${bulkPowerPending || onlineSelected.length === 0 ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                       <Power className="w-3.5 h-3.5 shrink-0" />
                       <span className="truncate">{isBulkOn ? 'ON' : 'OFF'}</span>
@@ -1541,15 +2006,18 @@ export function Dashboard({
 
       {/* MOBILE FIGMA-MATCHING VIEW */}
       {(() => {
-        const tempValue = typeof targetTempState === 'number' ? targetTempState : 24;
+        const tempValue = typeof targetTempState === 'number' ? targetTempState : TEMP_ECO;
         const startAngle = 140;
         const totalAngle = 260;
-        const angleDeg = startAngle + (totalAngle * (tempValue - 16)) / (31 - 16);
+        const angleDeg = startAngle + (totalAngle * (tempValue - TEMP_MIN)) / (TEMP_MAX - TEMP_MIN);
         const angleRad = (angleDeg * Math.PI) / 180;
         const cx = 110 + 92 * Math.cos(angleRad);
         const cy = 110 + 92 * Math.sin(angleRad);
-        
-        const allUnitsOn = selectedUnits.every(u => u.isOn) && selectedUnits.length > 0;
+
+        // Org/venue: skip superlock. Single device: allow direct control even if superlocked.
+        const controllableUnits = framePowerTargets;
+        const allUnitsOn =
+          controllableUnits.length > 0 && controllableUnits.every((u) => u.isOn);
         const arcActiveColor = allUnitsOn ? '#4f46e5' : '#94a3b8';
         const handleArrow = allUnitsOn ? '#4f46e5' : '#94a3b8';
 
@@ -1564,7 +2032,7 @@ export function Dashboard({
                 </>
               ) : globalVenueId ? (
                 <>
-                  Venue: <span className="text-blue-600">{venues.find(v => v.id === globalVenueId)?.name?.replace('_', ' ') || 'Venue'}</span>
+                  Venue: <span className="text-blue-600">{orgVenues.find(v => v.id === globalVenueId)?.name || 'Venue'}</span>
                 </>
               ) : (
                 <>
@@ -1670,7 +2138,7 @@ export function Dashboard({
                     strokeWidth="8.5" 
                     strokeLinecap="round" 
                     strokeDasharray="417.5"
-                    strokeDashoffset={417.5 - (417.5 * (tempValue - 16) / (31 - 16))}
+                    strokeDashoffset={417.5 - (417.5 * (tempValue - TEMP_MIN) / (TEMP_MAX - TEMP_MIN))}
                     fill="none" 
                     className="transition-colors duration-300"
                   />
@@ -1717,7 +2185,7 @@ export function Dashboard({
 
                   {/* Arc Limit Labels */}
                   <text x="39.5" y="194" fill="#94a3b8" fontSize="11" fontWeight="500" textAnchor="middle">16°C</text>
-                  <text x="180.5" y="194" fill="#94a3b8" fontSize="11" fontWeight="500" textAnchor="middle">31°C</text>
+                  <text x="180.5" y="194" fill="#94a3b8" fontSize="11" fontWeight="500" textAnchor="middle">30°C</text>
                 </svg>
 
                 {/* Inner Content Controller - perfectly fits inside the arc */}
@@ -1775,18 +2243,8 @@ export function Dashboard({
                   
                   <button 
                     type="button"
-                    disabled={!allUnitsOn}
-                    onClick={() => {
-                      if (!allUnitsOn) return;
-                      selectedUnits.forEach(u => {
-                        if (onUpdateDevice) onUpdateDevice(u.id, { targetTemp: 24 });
-                      });
-                    }}
-                    className={`mt-3 px-5 py-2 rounded-full text-[12px] font-semibold tracking-wide transition-colors pointer-events-auto ${
-                      allUnitsOn
-                        ? 'bg-[#e0e5f8] hover:bg-indigo-100 text-[#4f46e5]'
-                        : 'bg-slate-200 text-slate-400 opacity-60 cursor-not-allowed'
-                    }`}
+                    onClick={handleBulkEco}
+                    className="mt-3 px-5 py-2 rounded-full text-[12px] font-semibold tracking-wide transition-colors pointer-events-auto bg-[#e0e5f8] hover:bg-indigo-100 text-[#4f46e5]"
                   >
                     Auto Adjust
                   </button>
@@ -1904,7 +2362,7 @@ export function Dashboard({
         isOpen={showScheduleForm}
         onClose={() => setShowScheduleForm(false)}
         title="Add New Venue Schedule"
-        subtitle={`For ${selectedVenueId === 'all' ? 'All Venues' : venues.find(v => v.id === selectedVenueId)?.name || 'Selected Venue'} · ${totalUnitsCount} unit${totalUnitsCount === 1 ? '' : 's'}`}
+        subtitle={`For ${selectedVenueId === 'all' ? `All ${activeOrg.name} Venues` : orgVenues.find(v => v.id === selectedVenueId)?.name || 'Selected Venue'} · ${totalUnitsCount} unit${totalUnitsCount === 1 ? '' : 's'}`}
       >
         <form onSubmit={handleAddSchedule} className="space-y-4 sm:space-y-5">
           <div className="space-y-1.5">
@@ -2015,8 +2473,10 @@ export function Dashboard({
     </div>
   );
 
-  // Helper utility to check if any device is on in venue
+  // Helper utility to check if any online device is on in venue
   function anyOnVenue(venueId: string) {
-    return units.filter(u => u.venueId === venueId).some(u => u.isOn);
+    return liveUnits
+      .filter((u) => u.venueId === venueId && isOrgVenueBulkTarget(u))
+      .some((u) => u.isOn);
   }
 }

@@ -23,7 +23,8 @@ export function ManagerModals() {
     showAddDevice, setShowAddDevice, newDeviceName, setNewDeviceName,
     newDeviceOrgId, setNewDeviceOrgId, newDeviceVenueId, setNewDeviceVenueId,
     newDeviceBrand, setNewDeviceBrand, newDeviceEnergySensor, setNewDeviceEnergySensor,
-    newDeviceCapacity, setNewDeviceCapacity, newDeviceVenues, newDeviceBrands,
+    newDeviceCapacity, setNewDeviceCapacity, newDeviceVoltage, setNewDeviceVoltage,
+    newDeviceVenues, newDeviceBrands,
     newDeviceError, isAddingDevice, deviceToast, setDeviceToast,
     editDeviceVenues, editDeviceBrands, editDeviceError, isUpdatingDevice,
     isDeletingDevice, deleteError, setDeleteError,
@@ -450,6 +451,24 @@ export function ManagerModals() {
                     ]}
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">
+                    Line Voltage (V)
+                  </label>
+                  <input
+                    type="number"
+                    min={100}
+                    max={400}
+                    step={1}
+                    value={newDeviceVoltage}
+                    onChange={(e) => setNewDeviceVoltage(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs font-bold transition-all text-slate-800"
+                    placeholder="230"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1 font-medium">
+                    Used with live current to compute power. Default 230 V.
+                  </p>
+                </div>
                 <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                   <button
                     onClick={() => setShowAddDevice(false)}
@@ -789,6 +808,25 @@ export function ManagerModals() {
                         { value: '3', label: '3.0 Ton' },
                         { value: '3.5', label: '3.5 Ton' },
                       ]}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">
+                      Line Voltage (V)
+                    </label>
+                    <input
+                      type="number"
+                      min={100}
+                      max={400}
+                      step={1}
+                      value={editingDevice.voltage ?? 230}
+                      onChange={(e) =>
+                        setEditingDevice({
+                          ...editingDevice,
+                          voltage: Number(e.target.value) || 230,
+                        })
+                      }
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs font-bold transition-all text-slate-800"
                     />
                   </div>
                   <div>

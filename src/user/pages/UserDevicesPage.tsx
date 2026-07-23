@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useUserWorkspace } from '../context/UserWorkspaceContext';
 import {
   MonitorSmartphone,
@@ -29,6 +29,7 @@ export function UserDevicesPage() {
     selectedOrgId, setSelectedOrgId, selectedVenueId, setSelectedVenueId,
     editingUnitId, setEditingUnitId, revealApiKey, setRevealApiKey, copied, setCopied,
     handleEditClick, resetForm, handleSave, handleCopy, currentApiKey,
+    selectedDeviceVenueId, setSelectedDeviceVenueId,
   } = useUserWorkspace();
 
   const [listOrgId, setListOrgId] = useState(orgs[0]?.id || '');
@@ -36,14 +37,42 @@ export function UserDevicesPage() {
   const [orgVenues, setOrgVenues] = useState<Venue[]>([]);
   const [venueDevices, setVenueDevices] = useState<ACUnit[]>([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
+  const pendingVenueDeepLink = useRef<string | null>(
+    selectedDeviceVenueId && selectedDeviceVenueId !== 'all'
+      ? selectedDeviceVenueId
+      : null
+  );
 
   const assignedVenueIds = user?.assignedVenueIds || [];
 
   useEffect(() => {
-    if (!listOrgId && orgs.length > 0) {
+    if (selectedDeviceVenueId && selectedDeviceVenueId !== 'all') {
+      pendingVenueDeepLink.current = selectedDeviceVenueId;
+    }
+  }, [selectedDeviceVenueId]);
+
+  useEffect(() => {
+    if (orgs.length === 0) {
+      if (listOrgId) setListOrgId('');
+      return;
+    }
+
+    const deepLinkVenueId = pendingVenueDeepLink.current;
+    if (deepLinkVenueId) {
+      if (venues.length === 0) return;
+      const linkedVenue = venues.find((v) => v.id === deepLinkVenueId);
+      if (linkedVenue?.orgId && orgs.some((o) => o.id === linkedVenue.orgId)) {
+        if (listOrgId !== linkedVenue.orgId) {
+          setListOrgId(linkedVenue.orgId);
+        }
+        return;
+      }
+    }
+
+    if (!listOrgId || !orgs.some((o) => o.id === listOrgId)) {
       setListOrgId(orgs[0].id);
     }
-  }, [orgs, listOrgId]);
+  }, [orgs, venues, listOrgId]);
 
   useEffect(() => {
     let active = true;
@@ -60,7 +89,15 @@ export function UserDevicesPage() {
             ? list.filter((v) => assignedVenueIds.includes(v.id))
             : list;
         setOrgVenues(filtered);
-        setListVenueId(filtered[0]?.id || '');
+
+        const deepLinkVenueId = pendingVenueDeepLink.current;
+        if (deepLinkVenueId && filtered.some((v) => v.id === deepLinkVenueId)) {
+          setListVenueId(deepLinkVenueId);
+          pendingVenueDeepLink.current = null;
+          setSelectedDeviceVenueId('all');
+        } else {
+          setListVenueId(filtered[0]?.id || '');
+        }
       })
       .catch(() => {
         if (!active) return;
@@ -68,7 +105,7 @@ export function UserDevicesPage() {
       });
 
     return () => { active = false; };
-  }, [listOrgId, assignedVenueIds.join(',')]);
+  }, [listOrgId, assignedVenueIds.join(','), setSelectedDeviceVenueId]);
 
   useEffect(() => {
     let active = true;

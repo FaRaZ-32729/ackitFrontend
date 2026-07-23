@@ -122,6 +122,8 @@ interface AppContextType {
   setSelectedUnitId: (id: string | null) => void;
   selectedVenueId: string | null;
   setSelectedVenueId: (id: string | null) => void;
+  selectedOrgId: string | null;
+  setSelectedOrgId: (id: string | null) => void;
   
   // Handlers
   handleTogglePower: (id: string) => void;
@@ -179,6 +181,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [plansError, setPlansError] = useState<string | null>(null);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(null);
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
 
   const persistSession = useCallback((nextToken: string | null, nextUser: AuthUser | null) => {
     setToken(nextToken);
@@ -738,6 +741,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       state?: 'on' | 'off';
       isOn?: boolean;
       temperature?: number;
+      current?: number;
+      voltage?: number;
+      powerConsumption?: number;
+      ventTemperature?: number | null;
+      health?: 'healthy' | 'faulty';
+      healthAlert?: string;
+      hasFault?: boolean;
     }) => {
       if (!payload?.id) return;
 
@@ -754,6 +764,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ) {
         patch.targetTemp = payload.temperature;
         patch.currentTemp = payload.temperature;
+      }
+      if (typeof payload.current === 'number' && payload.current >= 0) {
+        patch.current = payload.current;
+      }
+      if (typeof payload.voltage === 'number' && payload.voltage > 0) {
+        patch.voltage = payload.voltage;
+      }
+      if (typeof payload.powerConsumption === 'number' && payload.powerConsumption >= 0) {
+        patch.powerConsumption = payload.powerConsumption;
+      }
+      if (typeof payload.ventTemperature === 'number') {
+        patch.ventTemperature = payload.ventTemperature;
+      }
+      if (typeof payload.hasFault === 'boolean') {
+        patch.hasFault = payload.hasFault;
+      } else if (payload.health === 'faulty' || payload.health === 'healthy') {
+        patch.hasFault = payload.health === 'faulty';
+      }
+      if (typeof payload.healthAlert === 'string') {
+        patch.healthAlert = payload.healthAlert;
       }
       if (Object.keys(patch).length === 0) return;
 
@@ -772,7 +802,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               targetTemp: patch.targetTemp ?? 16,
               isLocked: false,
               eventLocked: false,
-              hasFault: false,
+              hasFault: patch.hasFault ?? false,
+              healthAlert: patch.healthAlert ?? '',
+              voltage: patch.voltage ?? 230,
+              current: patch.current ?? 0,
+              powerConsumption: patch.powerConsumption ?? 0,
+              ventTemperature: patch.ventTemperature ?? null,
               energyConsumption: {
                 hourly: [{ label: '00:00', kwh: 0 }],
                 daily: [{ label: new Date().toISOString().split('T')[0], kwh: 0 }],
@@ -789,6 +824,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
 
     socket.on('device:state', onDeviceState);
+
+    const onDeviceAlert = (payload: {
+      id?: string;
+      hasFault?: boolean;
+      health?: 'healthy' | 'faulty';
+      healthAlert?: string;
+      ventTemperature?: number;
+    }) => {
+      if (!payload?.id) return;
+      const patch: Partial<ACUnit> = {};
+      if (typeof payload.hasFault === 'boolean') {
+        patch.hasFault = payload.hasFault;
+      } else if (payload.health === 'faulty' || payload.health === 'healthy') {
+        patch.hasFault = payload.health === 'faulty';
+      }
+      if (typeof payload.healthAlert === 'string') {
+        patch.healthAlert = payload.healthAlert;
+      }
+      if (typeof payload.ventTemperature === 'number') {
+        patch.ventTemperature = payload.ventTemperature;
+      }
+      if (Object.keys(patch).length === 0) return;
+      setUnits((prev) =>
+        prev.map((u) => (u.id === payload.id ? { ...u, ...patch } : u))
+      );
+    };
+
+    socket.on('device:alert', onDeviceAlert);
 
     const onDeviceRemote = (payload: {
       id?: string;
@@ -819,6 +882,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     socket.on('device:remote', onDeviceRemote);
     return () => {
       socket.off('device:state', onDeviceState);
+      socket.off('device:alert', onDeviceAlert);
       socket.off('device:remote', onDeviceRemote);
     };
   }, [token, role]);
@@ -955,6 +1019,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setSelectedUnitId,
         selectedVenueId,
         setSelectedVenueId,
+        selectedOrgId,
+        setSelectedOrgId,
         handleTogglePower,
         handleSetTemp,
         handleToggleLock,

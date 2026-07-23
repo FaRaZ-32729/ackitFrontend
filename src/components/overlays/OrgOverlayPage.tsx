@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ChevronDown, 
   ChevronUp, 
@@ -19,13 +19,16 @@ export function OrgOverlayPage({ onClose }: { onClose: () => void }) {
     units, 
     selectedUnitId, 
     setSelectedUnitId,
-    selectedVenueId,
     setSelectedVenueId,
+    selectedOrgId: globalOrgId,
+    setSelectedOrgId: setGlobalOrgId,
     setActiveTab 
   } = useAppContext();
 
-  // Selected Organization State
-  const [selectedOrgId, setSelectedOrgId] = useState<string>(orgs[0]?.id || 'org-1');
+  // Selected Organization State (kept in sync with dashboard AppContext)
+  const [selectedOrgId, setSelectedOrgId] = useState<string>(
+    globalOrgId || orgs[0]?.id || ''
+  );
   const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
   
   // Search and Filter States
@@ -34,16 +37,24 @@ export function OrgOverlayPage({ onClose }: { onClose: () => void }) {
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
 
   // Expanded Venue State (Accordion)
-  const [expandedVenueIds, setExpandedVenueIds] = useState<Record<string, boolean>>({
-    'ven-1': true // Expand first venue by default for high visual parity with screenshot
-  });
+  const [expandedVenueIds, setExpandedVenueIds] = useState<Record<string, boolean>>({});
 
   // Track which venue has its device-dropdown menu open on the right
   const [openVenueDropdownId, setOpenVenueDropdownId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (globalOrgId && orgs.some((o) => o.id === globalOrgId)) {
+      setSelectedOrgId(globalOrgId);
+      return;
+    }
+    if (orgs.length > 0 && (!selectedOrgId || !orgs.some((o) => o.id === selectedOrgId))) {
+      setSelectedOrgId(orgs[0].id);
+    }
+  }, [globalOrgId, orgs, selectedOrgId]);
+
   // Get selected organization object
   const selectedOrg = useMemo(() => {
-    return orgs.find(o => o.id === selectedOrgId) || orgs[0] || { id: 'org-1', name: 'SSUET_AS' };
+    return orgs.find(o => o.id === selectedOrgId) || orgs[0] || { id: '', name: 'Organization' };
   }, [orgs, selectedOrgId]);
 
   // Filter venues related to the selected organization
@@ -82,9 +93,34 @@ export function OrgOverlayPage({ onClose }: { onClose: () => void }) {
 
   const handleSelectOrg = (orgId: string) => {
     setSelectedOrgId(orgId);
+    setGlobalOrgId(orgId);
     setIsOrgDropdownOpen(false);
-    // Reset search when changing org
     setSearchQuery('');
+  };
+
+  const goToOrgDashboard = () => {
+    setGlobalOrgId(selectedOrgId);
+    setSelectedVenueId(null);
+    setSelectedUnitId(null);
+    setActiveTab('dashboard');
+    onClose();
+  };
+
+  const goToVenueDashboard = (venueId: string) => {
+    setGlobalOrgId(selectedOrgId);
+    setSelectedVenueId(venueId);
+    setSelectedUnitId(null);
+    setActiveTab('dashboard');
+    onClose();
+  };
+
+  const goToDeviceDashboard = (venueId: string, unitId: string) => {
+    setGlobalOrgId(selectedOrgId);
+    setSelectedVenueId(venueId);
+    setSelectedUnitId(unitId);
+    setActiveTab('dashboard');
+    setOpenVenueDropdownId(null);
+    onClose();
   };
 
   return (
@@ -233,12 +269,7 @@ export function OrgOverlayPage({ onClose }: { onClose: () => void }) {
             <div className="divide-y divide-slate-100">
               {/* All Campus Venues Row */}
               <div 
-                onClick={() => {
-                  setSelectedVenueId(null);
-                  setSelectedUnitId(null);
-                  setActiveTab('dashboard');
-                  onClose();
-                }}
+                onClick={goToOrgDashboard}
                 className="flex items-center justify-between py-4 px-5 hover:bg-slate-50/50 cursor-pointer transition-colors active:bg-slate-100/30"
               >
                 <div className="flex items-center gap-4">
@@ -260,12 +291,7 @@ export function OrgOverlayPage({ onClose }: { onClose: () => void }) {
                     
                     {/* Venue Row */}
                     <div 
-                      onClick={() => {
-                        setSelectedVenueId(venue.id);
-                        setSelectedUnitId(null);
-                        setActiveTab('dashboard');
-                        onClose();
-                      }}
+                      onClick={() => goToVenueDashboard(venue.id)}
                       className="flex items-center justify-between py-4 px-5 hover:bg-slate-50/50 cursor-pointer transition-colors active:bg-slate-100/30"
                     >
                       <div className="flex items-center gap-4">
@@ -328,12 +354,7 @@ export function OrgOverlayPage({ onClose }: { onClose: () => void }) {
                                 venueUnits.map(unit => (
                                   <button
                                     key={unit.id}
-                                    onClick={() => {
-                                      setSelectedUnitId(unit.id);
-                                      setActiveTab('dashboard');
-                                      setOpenVenueDropdownId(null);
-                                      onClose();
-                                    }}
+                                    onClick={() => goToDeviceDashboard(venue.id, unit.id)}
                                     className={`w-full text-left px-4 py-2.5 text-xs font-bold flex items-center justify-between transition-colors ${
                                       selectedUnitId === unit.id 
                                         ? 'bg-blue-50/50 text-blue-600' 
@@ -374,11 +395,7 @@ export function OrgOverlayPage({ onClose }: { onClose: () => void }) {
                           venueUnits.map((unit) => (
                             <div 
                               key={unit.id}
-                              onClick={() => {
-                                setSelectedUnitId(unit.id);
-                                setActiveTab('dashboard');
-                                onClose();
-                              }}
+                              onClick={() => goToDeviceDashboard(venue.id, unit.id)}
                               className={`flex items-center justify-between py-3 cursor-pointer group active:opacity-70 transition-all ${
                                 selectedUnitId === unit.id ? 'text-[#005ac1]' : 'text-slate-600 hover:text-slate-900'
                               }`}

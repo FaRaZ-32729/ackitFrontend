@@ -17,10 +17,16 @@ interface ApiDevice {
   status: 'online' | 'offline';
   state: 'on' | 'off';
   health?: 'healthy' | 'faulty';
+  healthAlert?: string;
   version: string;
   remote: 'lock' | 'unlock' | 'superlock';
   temperature: number;
+  voltage?: number;
+  current?: number;
   powerConsumption: number;
+  mode?: string;
+  fanSpeed?: string;
+  ventTemperature?: number | null;
   apikey?: string;
 }
 
@@ -60,11 +66,25 @@ export function mapApiDevice(device: ApiDevice): ACUnit {
     isLocked: remote === 'lock' || remote === 'superlock',
     eventLocked: remote === 'superlock',
     hasFault: device.health === 'faulty',
+    healthAlert: device.healthAlert || '',
     brand: brandName,
     capacityTon: `${device.capacity}ton`,
     hasEnergySensor: true,
+    voltage: device.voltage ?? 230,
+    current: device.current ?? 0,
     powerConsumption: device.powerConsumption ?? 0,
+    ventTemperature:
+      typeof device.ventTemperature === 'number'
+        ? device.ventTemperature
+        : null,
+    mode: device.mode
+      ? device.mode.charAt(0).toUpperCase() + device.mode.slice(1)
+      : undefined,
+    fanSpeed: device.fanSpeed
+      ? device.fanSpeed.charAt(0).toUpperCase() + device.fanSpeed.slice(1)
+      : undefined,
     apiKey: device.apikey || '',
+    status: device.status === 'online' ? 'online' : 'offline',
     energyConsumption: emptyEnergy(),
     // Events stay client-side / static for now
     events: [],
@@ -105,6 +125,7 @@ export async function createDevice(payload: {
   venue: string;
   brand: string;
   capacity: number;
+  voltage?: number;
 }): Promise<ACUnit> {
   const { data } = await api.post<{
     success: boolean;
@@ -122,6 +143,7 @@ export async function updateDevice(
     venue: string;
     brand: string;
     capacity: number;
+    voltage?: number;
   }
 ): Promise<ACUnit> {
   const { data } = await api.put<{
@@ -165,6 +187,42 @@ export async function setDeviceTemperature(
   return {
     requestedTemperature: data.requestedTemperature,
     currentTemperature: data.currentTemperature,
+  };
+}
+
+export async function setDeviceMode(
+  id: string,
+  mode: 'cool' | 'heat' | 'dry' | 'fan' | 'auto'
+): Promise<{ applied: boolean; skipped: boolean; mode: string }> {
+  const { data } = await api.post<{
+    success: boolean;
+    applied?: boolean;
+    skipped?: boolean;
+    mode: string;
+  }>(`/api/device/mode/${id}`, { mode });
+
+  return {
+    applied: Boolean(data.applied),
+    skipped: Boolean(data.skipped),
+    mode: data.mode,
+  };
+}
+
+export async function setDeviceFan(
+  id: string,
+  fan: 'low' | 'medium' | 'high' | 'ultra' | 'turbo'
+): Promise<{ applied: boolean; skipped: boolean; fan: string }> {
+  const { data } = await api.post<{
+    success: boolean;
+    applied?: boolean;
+    skipped?: boolean;
+    fan: string;
+  }>(`/api/device/fan/${id}`, { fan });
+
+  return {
+    applied: Boolean(data.applied),
+    skipped: Boolean(data.skipped),
+    fan: data.fan,
   };
 }
 

@@ -95,19 +95,29 @@ export interface ACUnit {
   isLocked: boolean;
   eventLocked: boolean;
   hasFault: boolean;
+  /** Backend healthAlert text when faulty (vent temp, etc.) */
+  healthAlert?: string;
   energyConsumption: EnergyData;
   events: ACEvent[];
   brand?: string;
   hasEnergySensor?: boolean;
   capacityTon?: string;
-  /** Live / stored draw from DB (`powerConsumption`) */
+  mode?: string;
+  fanSpeed?: string;
+  /** Line voltage set at device create/edit (default 230) */
+  voltage?: number;
+  /** Live measured current from ESP (A) */
+  current?: number;
+  /** Live / stored draw from DB (`powerConsumption`) in kW */
   powerConsumption?: number;
+  /** Last DS18B20 vent/room reading from ESP (°C) */
+  ventTemperature?: number | null;
   organizationId?: string;
   brandId?: string;
   /** Base64 of hardware deviceId (DB `apikey`) — read-only in UI */
   apiKey?: string;
-  mode?: string;
-  fanSpeed?: string;
+  /** MQTT connectivity from backend */
+  status?: 'online' | 'offline';
 }
 
 export function getACPowerDraw(unit: ACUnit): { power: number; unitStr: string; energyToday: number } {

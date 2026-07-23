@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useManagerWorkspace } from '../context/ManagerWorkspaceContext';
 import { useAppContext } from '../../context/AppContext';
 import {
@@ -22,10 +22,27 @@ import { getVenuesByOrganization } from '../../api/venueApi';
 import { getAppSocket } from '../../api/brandSocket';
 import type { Venue } from '../../types';
 
+const ALL_VENUES_ID = 'all';
+
+async function fetchDevicesForSelection(
+  venueId: string,
+  orgVenueList: Venue[]
+): Promise<ACUnit[]> {
+  if (!venueId) return [];
+  if (venueId === ALL_VENUES_ID) {
+    if (orgVenueList.length === 0) return [];
+    const lists = await Promise.all(
+      orgVenueList.map((v) => getDevicesByVenue(v.id).catch(() => [] as ACUnit[]))
+    );
+    return lists.flat();
+  }
+  return getDevicesByVenue(venueId);
+}
+
 /** Manager devices page — markup/CSS preserved from legacy ManagerView */
 export function DevicesPage() {
   const {
-    fetchMyOrganizations, orgsLoading, setUnits,
+    fetchMyOrganizations, orgsLoading, setUnits, fetchMyVenues,
   } = useAppContext();
   const {
     orgs, venues,
@@ -39,13 +56,14 @@ export function DevicesPage() {
     setShowAddEventModal,
     setEventDeviceId,
     showAddDevice,
+    selectedDeviceVenueId, setSelectedDeviceVenueId,
     subscribeDeviceEventAdd,
     subscribeDeviceDeleted,
     subscribeDeviceUpdated,
   } = useManagerWorkspace();
 
   const [selectedOrgId, setSelectedOrgId] = useState(orgs[0]?.id || '');
-  const [selectedVenueId, setSelectedVenueId] = useState('');
+  const [selectedVenueId, setSelectedVenueId] = useState(ALL_VENUES_ID);
   const [orgVenues, setOrgVenues] = useState<Venue[]>([]);
   const [venueDevices, setVenueDevices] = useState<ACUnit[]>([]);
   const [loadingVenues, setLoadingVenues] = useState(false);
@@ -55,6 +73,11 @@ export function DevicesPage() {
   const [powerError, setPowerError] = useState('');
   const prevShowAddDevice = useRef(showAddDevice);
   const tempDebounceTimers = useRef<Record<string, number>>({});
+  const pendingVenueDeepLink = useRef<string | null>(
+    selectedDeviceVenueId && selectedDeviceVenueId !== 'all'
+      ? selectedDeviceVenueId
+      : null
+  );
 
   useEffect(() => {
     return () => {
@@ -69,7 +92,16 @@ export function DevicesPage() {
     void fetchMyOrganizations().catch(() => {
       // surfaced via empty org dropdown / devicesError
     });
-  }, [fetchMyOrganizations]);
+    // Venues list helps resolve org for dashboard deep-link
+    void fetchMyVenues().catch(() => {});
+  }, [fetchMyOrganizations, fetchMyVenues]);
+
+  // Capture deep-link from Dashboard "View Devices"
+  useEffect(() => {
+    if (selectedDeviceVenueId && selectedDeviceVenueId !== 'all') {
+      pendingVenueDeepLink.current = selectedDeviceVenueId;
+    }
+  }, [selectedDeviceVenueId]);
 
   // Default org for logged-in manager once orgs are available
   useEffect(() => {
@@ -77,16 +109,31 @@ export function DevicesPage() {
       if (selectedOrgId) setSelectedOrgId('');
       return;
     }
+
+    const deepLinkVenueId = pendingVenueDeepLink.current;
+    if (deepLinkVenueId) {
+      // Wait until venues list is available to resolve the venue's organization
+      if (venues.length === 0) return;
+      const linkedVenue = venues.find((v) => v.id === deepLinkVenueId);
+      if (linkedVenue?.orgId && orgs.some((o) => o.id === linkedVenue.orgId)) {
+        if (selectedOrgId !== linkedVenue.orgId) {
+          setSelectedOrgId(linkedVenue.orgId);
+        }
+        return;
+      }
+    }
+
     const stillValid = orgs.some((org) => org.id === selectedOrgId);
     if (!selectedOrgId || !stillValid) {
       setSelectedOrgId(orgs[0].id);
     }
-  }, [orgs, selectedOrgId]);
+  }, [orgs, venues, selectedOrgId]);
 
-  // Load venues for selected organization; default to first venue
+  // Load venues for selected organization; honor deep-linked venue when possible
   useEffect(() => {
     let active = true;
-    setSelectedVenueId('');
+    setLoadingVenues(true);
+    setSelectedVenueId(ALL_VENUES_ID);
     setOrgVenues([]);
     setVenueDevices([]);
     setDevicesError('');
@@ -96,12 +143,25 @@ export function DevicesPage() {
       return () => { active = false; };
     }
 
-    setLoadingVenues(true);
     getVenuesByOrganization(selectedOrgId)
       .then((list) => {
         if (!active) return;
         setOrgVenues(list);
-        setSelectedVenueId(list[0]?.id || '');
+
+        const deepLinkVenueId = pendingVenueDeepLink.current;
+        const deepLinkMatch =
+          deepLinkVenueId && list.some((v) => v.id === deepLinkVenueId)
+            ? deepLinkVenueId
+            : null;
+
+        if (deepLinkMatch) {
+          setSelectedVenueId(deepLinkMatch);
+          pendingVenueDeepLink.current = null;
+          setSelectedDeviceVenueId('all');
+        } else {
+          // Default: all venues in the selected organization
+          setSelectedVenueId(ALL_VENUES_ID);
+        }
       })
       .catch(() => {
         if (!active) return;
@@ -113,9 +173,9 @@ export function DevicesPage() {
       });
 
     return () => { active = false; };
-  }, [selectedOrgId]);
+  }, [selectedOrgId, setSelectedDeviceVenueId]);
 
-  // Load devices when venue changes
+  // Load devices when venue (or all-venues) selection changes
   useEffect(() => {
     let active = true;
     setVenueDevices([]);
@@ -126,8 +186,13 @@ export function DevicesPage() {
       return () => { active = false; };
     }
 
+    // Wait for org venues when loading all
+    if (selectedVenueId === ALL_VENUES_ID && loadingVenues) {
+      return () => { active = false; };
+    }
+
     setLoadingDevices(true);
-    getDevicesByVenue(selectedVenueId)
+    fetchDevicesForSelection(selectedVenueId, orgVenues)
       .then((list) => {
         if (!active) return;
         setVenueDevices(list);
@@ -135,6 +200,12 @@ export function DevicesPage() {
         setUnits((prev) => {
           const real = prev.filter((u) => /^[a-fA-F0-9]{24}$/.test(u.id));
           const byId = new Map(real.map((u) => [u.id, u]));
+          if (selectedVenueId === ALL_VENUES_ID) {
+            const orgVenueIds = new Set(orgVenues.map((v) => v.id));
+            for (const [id, unit] of [...byId.entries()]) {
+              if (orgVenueIds.has(unit.venueId)) byId.delete(id);
+            }
+          }
           list.forEach((device) => {
             const existing = byId.get(device.id);
             byId.set(device.id, existing ? { ...existing, ...device } : device);
@@ -153,20 +224,26 @@ export function DevicesPage() {
       });
 
     return () => { active = false; };
-  }, [selectedVenueId, setUnits]);
+  }, [selectedVenueId, orgVenues, loadingVenues, setUnits]);
 
   // Refresh list after Add Device modal closes successfully
   useEffect(() => {
     if (prevShowAddDevice.current && !showAddDevice && selectedVenueId) {
-      getDevicesByVenue(selectedVenueId)
+      fetchDevicesForSelection(selectedVenueId, orgVenues)
         .then(setVenueDevices)
         .catch(() => {});
     }
     prevShowAddDevice.current = showAddDevice;
-  }, [showAddDevice, selectedVenueId]);
+  }, [showAddDevice, selectedVenueId, orgVenues]);
 
   // Keep local list in sync with add-event / delete / update from shared modals
   useEffect(() => {
+    const orgVenueIds = new Set(orgVenues.map((v) => v.id));
+    const belongsInCurrentView = (venueId: string) => {
+      if (selectedVenueId === ALL_VENUES_ID) return orgVenueIds.has(venueId);
+      return !!selectedVenueId && venueId === selectedVenueId;
+    };
+
     const unsubEvent = subscribeDeviceEventAdd((deviceId, event) => {
       setVenueDevices((prev) =>
         prev.map((u) =>
@@ -179,16 +256,12 @@ export function DevicesPage() {
     });
     const unsubUpdate = subscribeDeviceUpdated((device) => {
       setVenueDevices((prev) => {
-        // Moved to another venue — drop from current list
-        if (selectedVenueId && device.venueId !== selectedVenueId) {
+        if (!belongsInCurrentView(device.venueId)) {
           return prev.filter((u) => u.id !== device.id);
         }
         const exists = prev.some((u) => u.id === device.id);
         if (!exists) {
-          if (!selectedVenueId || device.venueId === selectedVenueId) {
-            return [device, ...prev];
-          }
-          return prev;
+          return [device, ...prev];
         }
         return prev.map((u) => (u.id === device.id ? { ...u, ...device } : u));
       });
@@ -198,7 +271,13 @@ export function DevicesPage() {
       unsubDelete();
       unsubUpdate();
     };
-  }, [subscribeDeviceEventAdd, subscribeDeviceDeleted, subscribeDeviceUpdated, selectedVenueId]);
+  }, [
+    subscribeDeviceEventAdd,
+    subscribeDeviceDeleted,
+    subscribeDeviceUpdated,
+    selectedVenueId,
+    orgVenues,
+  ]);
 
   // Live power state from ESP via Socket.IO
   useEffect(() => {
@@ -209,6 +288,13 @@ export function DevicesPage() {
       state?: 'on' | 'off';
       isOn?: boolean;
       temperature?: number;
+      current?: number;
+      voltage?: number;
+      powerConsumption?: number;
+      ventTemperature?: number | null;
+      health?: 'healthy' | 'faulty';
+      healthAlert?: string;
+      hasFault?: boolean;
     }) => {
       if (!payload?.id) return;
       const patch: Partial<ACUnit> = {};
@@ -229,6 +315,26 @@ export function DevicesPage() {
           [payload.id!]: String(payload.temperature),
         }));
       }
+      if (typeof payload.current === 'number' && payload.current >= 0) {
+        patch.current = payload.current;
+      }
+      if (typeof payload.voltage === 'number' && payload.voltage > 0) {
+        patch.voltage = payload.voltage;
+      }
+      if (typeof payload.powerConsumption === 'number' && payload.powerConsumption >= 0) {
+        patch.powerConsumption = payload.powerConsumption;
+      }
+      if (typeof payload.ventTemperature === 'number') {
+        patch.ventTemperature = payload.ventTemperature;
+      }
+      if (typeof payload.hasFault === 'boolean') {
+        patch.hasFault = payload.hasFault;
+      } else if (payload.health === 'faulty' || payload.health === 'healthy') {
+        patch.hasFault = payload.health === 'faulty';
+      }
+      if (typeof payload.healthAlert === 'string') {
+        patch.healthAlert = payload.healthAlert;
+      }
       if (Object.keys(patch).length === 0) return;
 
       setVenueDevices((prev) =>
@@ -240,6 +346,51 @@ export function DevicesPage() {
     };
 
     socket.on('device:state', onDeviceState);
+
+    const onDeviceAlert = (payload: {
+      id?: string;
+      hasFault?: boolean;
+      health?: 'healthy' | 'faulty';
+      healthAlert?: string;
+      ventTemperature?: number;
+    }) => {
+      if (!payload?.id) return;
+      const patch: Partial<ACUnit> = {};
+      if (typeof payload.hasFault === 'boolean') {
+        patch.hasFault = payload.hasFault;
+      } else if (payload.health === 'faulty' || payload.health === 'healthy') {
+        patch.hasFault = payload.health === 'faulty';
+      }
+      if (typeof payload.healthAlert === 'string') {
+        patch.healthAlert = payload.healthAlert;
+      }
+      if (typeof payload.ventTemperature === 'number') {
+        patch.ventTemperature = payload.ventTemperature;
+      }
+      if (Object.keys(patch).length === 0) return;
+      setVenueDevices((prev) =>
+        prev.map((u) => (u.id === payload.id ? { ...u, ...patch } : u))
+      );
+      onUpdateDevice(payload.id, patch);
+    };
+
+    socket.on('device:alert', onDeviceAlert);
+
+    const onDeviceStatus = (payload: {
+      id?: string;
+      status?: 'online' | 'offline';
+    }) => {
+      if (!payload?.id || (payload.status !== 'online' && payload.status !== 'offline')) {
+        return;
+      }
+      const patch: Partial<ACUnit> = { status: payload.status };
+      setVenueDevices((prev) =>
+        prev.map((u) => (u.id === payload.id ? { ...u, ...patch } : u))
+      );
+      onUpdateDevice(payload.id, patch);
+    };
+
+    socket.on('device:status', onDeviceStatus);
 
     const onDeviceRemote = (payload: {
       id?: string;
@@ -271,16 +422,28 @@ export function DevicesPage() {
     socket.on('device:remote', onDeviceRemote);
     return () => {
       socket.off('device:state', onDeviceState);
+      socket.off('device:alert', onDeviceAlert);
+      socket.off('device:status', onDeviceStatus);
       socket.off('device:remote', onDeviceRemote);
     };
   }, [onUpdateDevice]);
 
   const selectedVenueName = useMemo(
     () =>
-      orgVenues.find((v) => v.id === selectedVenueId)?.name ||
-      venues.find((v) => v.id === selectedVenueId)?.name ||
-      '—',
+      selectedVenueId === ALL_VENUES_ID
+        ? 'All Venues'
+        : orgVenues.find((v) => v.id === selectedVenueId)?.name ||
+          venues.find((v) => v.id === selectedVenueId)?.name ||
+          '—',
     [orgVenues, venues, selectedVenueId]
+  );
+
+  const resolveVenueName = useCallback(
+    (venueId: string) =>
+      orgVenues.find((v) => v.id === venueId)?.name ||
+      venues.find((v) => v.id === venueId)?.name ||
+      '—',
+    [orgVenues, venues]
   );
 
   const updateLocalDevice = (id: string, data: Partial<ACUnit>) => {
@@ -327,35 +490,33 @@ export function DevicesPage() {
   const toggleLocalPower = async (id: string) => {
     const unit = venueDevices.find((u) => u.id === id);
     if (!unit || powerPendingId === id) return;
-    if (unit.eventLocked) {
-      setPowerError('Device is Super Locked. Change lock mode first.');
-      return;
-    }
 
     const nextState: 'on' | 'off' = unit.isOn ? 'off' : 'on';
     setPowerError('');
     setPowerPendingId(id);
 
+    // Clear spinner if ESP never confirms (avoids endless loading)
+    const pendingTimer = window.setTimeout(() => {
+      setPowerPendingId((current) => (current === id ? null : current));
+    }, 5000);
+
     try {
       await setDevicePower(id, nextState);
-      // Button updates when ESP reports actual state over socket
+      // Optimistic UI; socket may refine when ESP ACKs
+      updateLocalDevice(id, { isOn: nextState === 'on' });
     } catch (err: any) {
-      setPowerPendingId(null);
       setPowerError(
         err?.response?.data?.message ||
           err?.message ||
           'Failed to send power command'
       );
+    } finally {
+      window.clearTimeout(pendingTimer);
+      setPowerPendingId((current) => (current === id ? null : current));
     }
   };
 
   const scheduleTemperatureSend = (id: string, temperature: number) => {
-    const unit = venueDevices.find((u) => u.id === id);
-    if (unit?.eventLocked) {
-      setPowerError('Device is Super Locked. Change lock mode first.');
-      return;
-    }
-
     const existing = tempDebounceTimers.current[id];
     if (existing) window.clearTimeout(existing);
 
@@ -414,11 +575,16 @@ export function DevicesPage() {
                         value={selectedVenueId}
                         onChange={setSelectedVenueId}
                         placeholder="Select venue"
-                        disabled={!selectedOrgId || loadingVenues || orgVenues.length === 0}
+                        disabled={!selectedOrgId || loadingVenues}
                         options={
-                          orgVenues.length > 0
-                            ? orgVenues.map((v) => ({ value: v.id, label: v.name }))
-                            : [{ value: '', label: loadingVenues ? 'Loading…' : 'No venues available', disabled: true }]
+                          !selectedOrgId
+                            ? [{ value: '', label: 'Select organization first', disabled: true }]
+                            : loadingVenues
+                              ? [{ value: ALL_VENUES_ID, label: 'Loading…', disabled: true }]
+                              : [
+                                  { value: ALL_VENUES_ID, label: 'All Venues' },
+                                  ...orgVenues.map((v) => ({ value: v.id, label: v.name })),
+                                ]
                         }
                       />
                     </div>
@@ -440,8 +606,8 @@ export function DevicesPage() {
                 )}
       
                 {/* Devices table card */}
-                <div className="flex-1 min-h-0 overflow-hidden bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col">
-                  <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
+                <div className="flex-1 min-h-0 overflow-hidden bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col py-2">
+                  <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden px-1">
                     {isBootstrapping ? (
                       <div className="h-full min-h-[12rem] flex flex-col items-center justify-center p-8 text-center text-slate-400 gap-2">
                         <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
@@ -457,33 +623,37 @@ export function DevicesPage() {
                         <MonitorSmartphone className="w-12 h-12 text-slate-300 mb-3" />
                         <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Devices Found</span>
                         <p className="text-xs text-slate-400 max-w-[200px]">
-                          {selectedVenueId
-                            ? 'No devices registered for this venue yet'
-                            : orgs.length === 0
-                              ? 'No organizations available yet'
-                              : 'Select an organization and venue to view devices'}
+                          {selectedVenueId === ALL_VENUES_ID
+                            ? orgVenues.length === 0
+                              ? 'No venues in this organization yet'
+                              : 'No devices registered for this organization yet'
+                            : selectedVenueId
+                              ? 'No devices registered for this venue yet'
+                              : orgs.length === 0
+                                ? 'No organizations available yet'
+                                : 'Select an organization and venue to view devices'}
                         </p>
                       </div>
                     ) : (
                       <table className="w-full table-fixed border-collapse">
                         <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-md">
                           <tr className="border-b border-slate-100 text-[9px] font-black uppercase text-slate-400 tracking-wider text-left">
-                            <th className="py-2.5 pl-5 pr-0 w-[18%]">Name</th>
-                            <th className="py-2.5 px-0.5 w-[9%] hidden sm:table-cell">Venue</th>
-                            <th className="py-2.5 px-0.5 w-[12%] text-center hidden sm:table-cell">Temp</th>
-                            <th className="py-2.5 px-0.5 w-[9%] text-center hidden sm:table-cell">Status</th>
-                            <th className="py-2.5 px-0.5 w-[9%] text-center hidden md:table-cell">Power</th>
-                            <th className="py-2.5 px-0.5 w-[13%] text-center hidden sm:table-cell">Lock</th>
-                            <th className="py-2.5 px-0.5 w-[6%] text-center hidden sm:table-cell">Diag</th>
-                            <th className="py-2.5 px-0.5 w-[7%] text-center hidden md:table-cell">Event</th>
-                            <th className="py-2.5 pl-0 pr-5 w-[12%] text-right">Actions</th>
+                            <th className="py-3 pl-4 pr-2 w-[20%]">Name</th>
+                            <th className="py-3 px-2 w-[10%] text-center hidden sm:table-cell">Venue</th>
+                            <th className="py-3 px-2 w-[12%] text-center hidden sm:table-cell">Temp</th>
+                            <th className="py-3 px-2 w-[10%] text-center hidden sm:table-cell">Status</th>
+                            <th className="py-3 px-2 w-[10%] text-center hidden md:table-cell">Power</th>
+                            <th className="py-3 px-2 w-[13%] text-center hidden sm:table-cell">Lock</th>
+                            <th className="py-3 px-2 w-[8%] text-center hidden sm:table-cell">Health</th>
+                            <th className="py-3 px-2 w-[8%] text-center hidden md:table-cell">Event</th>
+                            <th className="py-3 pl-2 pr-4 w-[9%] text-right">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-[11px] text-slate-700">
                           {venueDevices.map((unit) => {
                             const isExpanded = expandedDeviceId === unit.id;
                             const currentInputVal = deviceTempInputs[unit.id] ?? unit.targetTemp.toString();
-                            const displayName = unit.name.length > 6 ? `${unit.name.slice(0, 6)}...` : unit.name;
+                            const isOnline = unit.status !== 'offline';
       
                             const lockValue =
                               unit.isLocked && unit.eventLocked
@@ -491,13 +661,9 @@ export function DevicesPage() {
                                 : unit.isLocked
                                   ? 'Locked'
                                   : 'Unlocked';
-                            const controlsDisabled = !unit.isOn || unit.eventLocked;
+                            const controlsDisabled = !unit.isOn;
       
                             const applyTemp = (next: number) => {
-                              if (unit.eventLocked) {
-                                setPowerError('Device is Super Locked. Change lock mode first.');
-                                return;
-                              }
                               const clamped = Math.max(16, Math.min(30, next));
                               setDeviceTempInputs(prev => ({ ...prev, [unit.id]: clamped.toString() }));
                               updateLocalDevice(unit.id, {
@@ -511,25 +677,41 @@ export function DevicesPage() {
                             return (
                               <React.Fragment key={unit.id}>
                                 <tr className="hover:bg-slate-50/40 transition-colors">
-                                  <td className="py-2 pl-5 pr-0 align-middle">
-                                    <div className="flex items-center gap-1.5 min-w-0">
-                                      <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                                  <td className="py-3.5 pl-4 pr-2 align-middle">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <div
+                                        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                          isOnline
+                                            ? 'bg-emerald-50 text-emerald-600'
+                                            : 'bg-slate-100 text-slate-400'
+                                        }`}
+                                        title={isOnline ? 'Online' : 'Offline'}
+                                      >
                                         <MonitorSmartphone className="w-3.5 h-3.5" />
                                       </div>
                                       <span
-                                        className="font-extrabold text-slate-900 truncate cursor-default"
+                                        className="font-extrabold text-slate-900 truncate min-w-0 cursor-default"
                                         title={unit.name}
                                       >
-                                        {displayName}
+                                        {unit.name}
                                       </span>
                                     </div>
                                   </td>
-                                  <td className="py-2 px-0.5 align-middle hidden sm:table-cell">
-                                    <span className="block truncate text-slate-500 font-semibold" title={selectedVenueName}>
-                                      {selectedVenueName}
+                                  <td className="py-3.5 px-2 align-middle text-center hidden sm:table-cell">
+                                    <span
+                                      className="block truncate text-slate-500 font-semibold"
+                                      title={
+                                        selectedVenueId === ALL_VENUES_ID
+                                          ? resolveVenueName(unit.venueId)
+                                          : selectedVenueName
+                                      }
+                                    >
+                                      {selectedVenueId === ALL_VENUES_ID
+                                        ? resolveVenueName(unit.venueId)
+                                        : selectedVenueName}
                                     </span>
                                   </td>
-                                  <td className="py-2 px-0.5 hidden sm:table-cell">
+                                  <td className="py-3.5 px-2 hidden sm:table-cell">
                                     <div className="flex justify-center">
                                       <div className={`flex items-center bg-slate-50 border border-slate-200 rounded-full p-0.5 ${controlsDisabled ? 'opacity-40 grayscale' : ''}`}>
                                         <button
@@ -551,7 +733,6 @@ export function DevicesPage() {
                                           value={currentInputVal}
                                           disabled={controlsDisabled}
                                           onChange={(e) => {
-                                            if (unit.eventLocked) return;
                                             let rawVal = e.target.value;
                                             if (rawVal !== '') {
                                               const val = parseInt(rawVal);
@@ -602,21 +783,19 @@ export function DevicesPage() {
                                       </div>
                                     </div>
                                   </td>
-                                  <td className="py-2 px-0.5 text-center hidden sm:table-cell">
+                                  <td className="py-3.5 px-2 text-center hidden sm:table-cell">
                                     <div className="flex justify-center">
                                       <button
                                         type="button"
                                         onClick={() => void toggleLocalPower(unit.id)}
-                                        disabled={powerPendingId === unit.id || unit.eventLocked}
+                                        disabled={powerPendingId === unit.id}
                                         title={
-                                          unit.eventLocked
-                                            ? 'Super Locked'
-                                            : powerPendingId === unit.id
-                                              ? 'Waiting for device…'
-                                              : 'Toggle power'
+                                          powerPendingId === unit.id
+                                            ? 'Waiting for device…'
+                                            : 'Toggle power'
                                         }
                                         className={`relative inline-flex h-6 w-12 items-center rounded-full transition-colors focus:outline-none ${
-                                          powerPendingId === unit.id || unit.eventLocked
+                                          powerPendingId === unit.id
                                             ? 'opacity-60 cursor-not-allowed'
                                             : 'cursor-pointer'
                                         } ${unit.isOn ? 'bg-emerald-500' : 'bg-slate-300'}`}
@@ -628,15 +807,18 @@ export function DevicesPage() {
                                       </button>
                                     </div>
                                   </td>
-                                  <td className="py-2 px-0.5 hidden md:table-cell">
+                                  <td className="py-3.5 px-2 hidden md:table-cell">
                                     <div className="flex flex-col items-center min-w-0">
                                       <div className="flex items-center gap-0.5 text-[11px] font-black text-slate-800">
                                         <Zap className="w-3 h-3 text-blue-500 fill-blue-500 shrink-0" />
-                                        <span className="tabular-nums">{unit.powerConsumption ?? 0}</span>
+                                        <span className="tabular-nums">
+                                          {Number(unit.powerConsumption ?? 0).toFixed(2)}
+                                        </span>
+                                        <span className="text-[9px] font-bold text-slate-400">kW</span>
                                       </div>
                                     </div>
                                   </td>
-                                  <td className="py-2 px-0.5 hidden sm:table-cell">
+                                  <td className="py-3.5 px-2 hidden sm:table-cell">
                                     <div className="min-w-0 max-w-[8.5rem] mx-auto">
                                       <CustomDropdown
                                         value={lockValue}
@@ -656,12 +838,12 @@ export function DevicesPage() {
                                       />
                                     </div>
                                   </td>
-                                  <td className="py-2 px-0.5 text-center hidden sm:table-cell">
+                                  <td className="py-3.5 px-2 text-center hidden sm:table-cell">
                                     <div className="flex justify-center">
                                       {unit.hasFault ? (
                                         <span
                                           className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-50 text-amber-600 border border-amber-200/60"
-                                          title="Faulty"
+                                          title={unit.healthAlert || 'Faulty'}
                                         >
                                           <AlertTriangle className="w-3.5 h-3.5" />
                                         </span>
@@ -675,7 +857,7 @@ export function DevicesPage() {
                                       )}
                                     </div>
                                   </td>
-                                  <td className="py-2 px-0.5 text-center hidden md:table-cell">
+                                  <td className="py-3.5 px-2 text-center hidden md:table-cell">
                                     <button
                                       type="button"
                                       onClick={() => setExpandedDeviceId(isExpanded ? null : unit.id)}
@@ -688,7 +870,7 @@ export function DevicesPage() {
                                       <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                     </button>
                                   </td>
-                                  <td className="py-2 pl-0 pr-5 text-right align-middle">
+                                  <td className="py-3.5 pl-2 pr-4 text-right align-middle">
                                     <div className="flex justify-end gap-0.5">
                                       <button
                                         type="button"

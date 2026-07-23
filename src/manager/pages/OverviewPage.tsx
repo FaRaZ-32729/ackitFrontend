@@ -309,90 +309,61 @@ export function OverviewPage() {
                       <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Smart Climate Co-Pilot</span>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Device Alerts</span>
                         </div>
-                        <span className="text-[9px] font-black bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30">SSUET AI</span>
+                        <span className="text-[9px] font-black bg-red-500/20 text-red-400 px-2 py-0.5 rounded border border-red-500/30">
+                          {faultyDevices.length} Faulty
+                        </span>
                       </div>
       
-                      {(() => {
-                        const coldOnUnits = units.filter(u => u.isOn && u.targetTemp < 24);
-                        const isAnyCold = coldOnUnits.length > 0;
+      {(() => {
                         const faultySensorUnits = faultyDevices;
-                        const hasAnyAlert = isAnyCold || faultySensorUnits.length > 0;
-      
+                        const hasAnyAlert = faultySensorUnits.length > 0;
+
                         if (!hasAnyAlert) {
                           return (
                             <div className="text-center py-6 flex flex-col items-center justify-center space-y-3">
                               <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
                                 <Check className="w-8 h-8" />
                               </div>
-                              <h4 className="text-sm font-black text-white">Climate Grid Optimized</h4>
+                              <h4 className="text-sm font-black text-white">No Active Alerts</h4>
                               <p className="text-xs text-slate-400 leading-relaxed max-w-[220px] mx-auto">
-                                All SSUET campus AC units are active within energy-efficient levels (≥24°C) and all hardware checks are 100% operational.
+                                All devices are healthy. Vent temperature faults will appear here when reported.
                               </p>
                             </div>
                           );
                         }
-      
+
                         return (
                           <div className="space-y-5">
-                            {/* Section 1: Temperature Eco Optimization */}
-                            {isAnyCold && (
-                              <div className="space-y-3">
+                            <div className="space-y-3">
                                 <p className="text-xs text-slate-300 leading-relaxed">
-                                  <span className="text-amber-400 font-extrabold">{coldOnUnits.length} SSUET zones</span> are set cooling below the recommended eco-efficient threshold (<span className="text-white font-bold">24°C</span>).
+                                  <span className="text-red-400 font-extrabold">{faultySensorUnits.length} unit{faultySensorUnits.length === 1 ? '' : 's'}</span> need maintenance.
                                 </p>
-                                <button
-                                  onClick={() => {
-                                    units.forEach(u => {
-                                      if (u.isOn && u.targetTemp < 24 && onUpdateDevice) {
-                                        onUpdateDevice(u.id, { targetTemp: 24 });
-                                      }
-                                    });
-                                  }}
-                                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all text-center shadow-lg shadow-blue-900/30"
-                                >
-                                  Set All to Eco-Temp (24°C)
-                                </button>
-                              </div>
-                            )}
-      
-                            {/* Section 2: Sensor Health & Quick Fix */}
-                            {faultySensorUnits.length > 0 && (
-                              <div className={`space-y-3 ${isAnyCold ? 'pt-4 border-t border-slate-800' : ''}`}>
-                                <p className="text-xs text-slate-300 leading-relaxed">
-                                  We detected <span className="text-red-400 font-extrabold">{faultySensorUnits.length} units</span> with sensor connectivity or ventilation faults.
-                                </p>
-                                <div className="space-y-2 max-h-[160px] overflow-y-auto no-scrollbar pr-1">
-                                  {faultySensorUnits.map(device => (
-                                    <div key={device.id} className="p-2.5 bg-slate-900/60 border border-slate-800 rounded-xl flex items-center justify-between text-xs hover:border-slate-700 transition-all">
-                                      <div className="truncate max-w-[120px]">
+                                <div className="space-y-2 max-h-[220px] overflow-y-auto no-scrollbar pr-1">
+                                  {faultySensorUnits.map(device => {
+                                    const reason =
+                                      device.healthAlert ||
+                                      (typeof device.ventTemperature === 'number'
+                                        ? `Vent ${device.ventTemperature.toFixed(1)}°C above set ${device.targetTemp}°C`
+                                        : 'Vent temperature above set point');
+                                    return (
+                                    <div key={device.id} className="p-2.5 bg-slate-900/60 border border-slate-800 rounded-xl flex items-center justify-between text-xs hover:border-slate-700 transition-all gap-2">
+                                      <div className="truncate min-w-0">
                                         <p className="font-extrabold text-slate-200 truncate">{device.name}</p>
                                         <p className="text-[9px] text-slate-500 mt-0.5 truncate">{device.venueName || 'AC Unit'}</p>
+                                        <p className="text-[9px] text-amber-400 mt-1 leading-snug whitespace-normal">{reason}</p>
                                       </div>
-                                      <div className="flex gap-1">
-                                        <button
-                                          onClick={() => onSelectUnit(device.id)}
-                                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[9px] font-black uppercase rounded"
-                                        >
-                                          Diagnose
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            if (onUpdateDevice) {
-                                              onUpdateDevice(device.id, { hasFault: false });
-                                            }
-                                          }}
-                                          className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase rounded"
-                                        >
-                                          Calibrate
-                                        </button>
-                                      </div>
+                                      <button
+                                        onClick={() => onSelectUnit(device.id)}
+                                        className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[9px] font-black uppercase rounded shrink-0"
+                                      >
+                                        View
+                                      </button>
                                     </div>
-                                  ))}
+                                  );})}
                                 </div>
                               </div>
-                            )}
                           </div>
                         );
                       })()}
