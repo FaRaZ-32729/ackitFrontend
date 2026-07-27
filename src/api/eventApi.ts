@@ -110,3 +110,30 @@ export async function setScheduleEventEnabled(
 export async function deleteScheduleEvent(id: string): Promise<void> {
   await api.delete(`/api/event/${id}`);
 }
+
+export interface CoveringEvent extends ScheduleEvent {
+  /** Devices in the request that this event currently covers */
+  deviceIds: string[];
+}
+
+export async function getCoveringEvents(
+  deviceIds: string[]
+): Promise<CoveringEvent[]> {
+  if (deviceIds.length === 0) return [];
+  const { data } = await api.get<{ success: boolean; events: CoveringEvent[] }>(
+    '/api/event/covering',
+    { params: { deviceIds: deviceIds.join(',') } }
+  );
+  return data.events || [];
+}
+
+export async function ignoreScheduleEvent(
+  id: string,
+  opts: { deviceId?: string; all?: boolean }
+): Promise<ScheduleEvent> {
+  const { data } = await api.post<{ success: boolean; event: ScheduleEvent }>(
+    `/api/event/${id}/ignore`,
+    opts
+  );
+  return data.event;
+}

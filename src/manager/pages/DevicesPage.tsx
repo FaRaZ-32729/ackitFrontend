@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { CustomDropdown } from '../../components/ui/CustomDropdown';
 import { Modal } from '../../components/ui/Modal';
+import { EventOverrideModal } from '../../components/ui/EventOverrideModal';
 import { type ACUnit } from '../../types';
 import { getDevicesByVenue, setDevicePower, setDeviceRemote, setDeviceTemperature } from '../../api/deviceApi';
 import { getVenuesByOrganization } from '../../api/venueApi';
@@ -26,6 +27,10 @@ import {
   setScheduleEventEnabled,
   deleteScheduleEvent,
 } from '../../api/eventApi';
+import {
+  withEventOverrideGuard,
+  type EventOverridePending,
+} from '../../utils/eventOverride';
 import { getAppSocket } from '../../api/brandSocket';
 import type { Venue, ACEvent } from '../../types';
 
@@ -100,6 +105,8 @@ export function DevicesPage() {
   } | null>(null);
   const [deletingEvent, setDeletingEvent] = useState(false);
   const [eventActionError, setEventActionError] = useState('');
+  const [eventOverridePending, setEventOverridePending] =
+    useState<EventOverridePending | null>(null);
   const prevShowAddDevice = useRef(showAddDevice);
   const tempDebounceTimers = useRef<Record<string, number>>({});
   const pendingVenueDeepLink = useRef<string | null>(
@@ -662,9 +669,15 @@ export function DevicesPage() {
     }, 5000);
 
     try {
-      await setDevicePower(id, nextState);
-      // Optimistic UI; socket may refine when ESP ACKs
-      updateLocalDevice(id, { isOn: nextState === 'on' });
+      await withEventOverrideGuard({
+        deviceIds: [id],
+        ignoreAllTargets: false,
+        onNeedConfirm: (pending) => setEventOverridePending(pending),
+        apply: async () => {
+          await setDevicePower(id, nextState);
+          updateLocalDevice(id, { isOn: nextState === 'on' });
+        },
+      });
     } catch (err: any) {
       setPowerError(
         err?.response?.data?.message ||
@@ -685,7 +698,14 @@ export function DevicesPage() {
       void (async () => {
         try {
           setPowerError('');
-          await setDeviceTemperature(id, temperature);
+          await withEventOverrideGuard({
+            deviceIds: [id],
+            ignoreAllTargets: false,
+            onNeedConfirm: (pending) => setEventOverridePending(pending),
+            apply: async () => {
+              await setDeviceTemperature(id, temperature);
+            },
+          });
         } catch (err: any) {
           setPowerError(
             err?.response?.data?.message ||
@@ -1252,6 +1272,11 @@ export function DevicesPage() {
           </div>
         </div>
       </Modal>
+
+      <EventOverrideModal
+        pending={eventOverridePending}
+        onClose={() => setEventOverridePending(null)}
+      />
     </>
   );
 }

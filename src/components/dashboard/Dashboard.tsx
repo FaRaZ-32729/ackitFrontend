@@ -8,6 +8,10 @@ import {
   scheduleEventToACEvent,
   setScheduleEventEnabled,
 } from '../../api/eventApi';
+import {
+  withEventOverrideGuard,
+  type EventOverridePending,
+} from '../../utils/eventOverride';
 import { getAppSocket } from '../../api/brandSocket';
 import { 
   Power, 
@@ -40,6 +44,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Modal } from '../ui/Modal';
+import { EventOverrideModal } from '../ui/EventOverrideModal';
 import { ACKitLogo } from '../ui/ACKitLogo';
 import { CustomDropdown } from '../ui/CustomDropdown';
 
@@ -150,6 +155,8 @@ export function Dashboard({
   } | null>(null);
   const bulkToastTimer = useRef<number | null>(null);
   const [bulkPowerPending, setBulkPowerPending] = useState(false);
+  const [eventOverridePending, setEventOverridePending] =
+    useState<EventOverridePending | null>(null);
 
   const showBulkToast = useCallback(
     (message: string, type: 'error' | 'info' = 'error') => {
@@ -414,7 +421,12 @@ export function Dashboard({
   const [showVenueLockDropdownId, setShowVenueLockDropdownId] = useState<string | null>(null);
 
   const applyBulkPower = useCallback(
-    async (units: ACUnit[], turnOn: boolean, skipSuperlock = true) => {
+    async (
+      units: ACUnit[],
+      turnOn: boolean,
+      skipSuperlock = true,
+      ignoreAllTargets = true
+    ) => {
       const targets = filterPowerTempTargets(units, skipSuperlock);
       if (targets.length === 0) {
         const online = units.filter(isDeviceOnline);
@@ -432,26 +444,40 @@ export function Dashboard({
       }
       setBulkPowerPending(true);
       const state: 'on' | 'off' = turnOn ? 'on' : 'off';
-      const results = await Promise.allSettled(
-        targets.map((u) => setDevicePower(u.id, state))
-      );
-      const failed = results.filter((r) => r.status === 'rejected').length;
-      if (failed > 0) {
-        showBulkToast(
-          failed === results.length
-            ? 'Failed to send power command'
-            : `Power sent to ${results.length - failed}/${results.length} devices`,
-          failed === results.length ? 'error' : 'info'
-        );
+      try {
+        await withEventOverrideGuard({
+          deviceIds: targets.map((u) => u.id),
+          ignoreAllTargets,
+          onNeedConfirm: (pending) => setEventOverridePending(pending),
+          apply: async () => {
+            const results = await Promise.allSettled(
+              targets.map((u) => setDevicePower(u.id, state))
+            );
+            const failed = results.filter((r) => r.status === 'rejected').length;
+            if (failed > 0) {
+              showBulkToast(
+                failed === results.length
+                  ? 'Failed to send power command'
+                  : `Power sent to ${results.length - failed}/${results.length} devices`,
+                failed === results.length ? 'error' : 'info'
+              );
+            }
+          },
+        });
+      } finally {
+        setBulkPowerPending(false);
       }
-      // Actual isOn updates arrive via device:state socket
-      setBulkPowerPending(false);
     },
     [showBulkToast]
   );
 
   const applyBulkTemperature = useCallback(
-    async (units: ACUnit[], temperature: number, skipSuperlock = true) => {
+    async (
+      units: ACUnit[],
+      temperature: number,
+      skipSuperlock = true,
+      ignoreAllTargets = true
+    ) => {
       const clamped = Math.max(TEMP_MIN, Math.min(TEMP_MAX, Math.round(temperature)));
       const targets = filterPowerTempTargets(units, skipSuperlock);
       if (targets.length === 0) {
@@ -468,42 +494,61 @@ export function Dashboard({
         );
         return;
       }
-      // Optimistic local update while ESP confirms over socket
-      targets.forEach((u) => {
-        if (onUpdateDevice) onUpdateDevice(u.id, { targetTemp: clamped, currentTemp: clamped });
-        else {
-          setUnits((prev) =>
-            prev.map((item) =>
-              item.id === u.id
-                ? { ...item, targetTemp: clamped, currentTemp: clamped }
-                : item
-            )
+
+      await withEventOverrideGuard({
+        deviceIds: targets.map((u) => u.id),
+        ignoreAllTargets,
+        onNeedConfirm: (pending) => setEventOverridePending(pending),
+        apply: async () => {
+          // Optimistic local update while ESP confirms over socket
+          targets.forEach((u) => {
+            if (onUpdateDevice) onUpdateDevice(u.id, { targetTemp: clamped, currentTemp: clamped });
+            else {
+              setUnits((prev) =>
+                prev.map((item) =>
+                  item.id === u.id
+                    ? { ...item, targetTemp: clamped, currentTemp: clamped }
+                    : item
+                )
+              );
+            }
+          });
+          const results = await Promise.allSettled(
+            targets.map((u) => setDeviceTemperature(u.id, clamped))
           );
-        }
+          const failed = results.filter((r) => r.status === 'rejected').length;
+          if (failed > 0) {
+            showBulkToast(
+              failed === results.length
+                ? 'Failed to send temperature command'
+                : `Temp sent to ${results.length - failed}/${results.length} devices`,
+              failed === results.length ? 'error' : 'info'
+            );
+          }
+        },
       });
-      const results = await Promise.allSettled(
-        targets.map((u) => setDeviceTemperature(u.id, clamped))
-      );
-      const failed = results.filter((r) => r.status === 'rejected').length;
-      if (failed > 0) {
-        showBulkToast(
-          failed === results.length
-            ? 'Failed to send temperature command'
-            : `Temp sent to ${results.length - failed}/${results.length} devices`,
-          failed === results.length ? 'error' : 'info'
-        );
-      }
     },
     [onUpdateDevice, setUnits, showBulkToast]
   );
 
   const scheduleBulkTemperature = useCallback(
-    (scopeKey: string, units: ACUnit[], temperature: number, skipSuperlock = true) => {
+    (
+      scopeKey: string,
+      units: ACUnit[],
+      temperature: number,
+      skipSuperlock = true,
+      ignoreAllTargets = true
+    ) => {
       const existing = tempDebounceTimers.current[scopeKey];
       if (existing) window.clearTimeout(existing);
 
       tempDebounceTimers.current[scopeKey] = window.setTimeout(() => {
-        void applyBulkTemperature(units, temperature, skipSuperlock).finally(() => {
+        void applyBulkTemperature(
+          units,
+          temperature,
+          skipSuperlock,
+          ignoreAllTargets
+        ).finally(() => {
           delete tempDebounceTimers.current[scopeKey];
           setDraftTemps((prev) => {
             const next = { ...prev };
@@ -517,36 +562,71 @@ export function Dashboard({
   );
 
   const handleScopeTempAdjust = useCallback(
-    (scopeKey: string, units: ACUnit[], increment: number, skipSuperlock = true) => {
+    (
+      scopeKey: string,
+      units: ACUnit[],
+      increment: number,
+      skipSuperlock = true,
+      ignoreAllTargets = true
+    ) => {
       if (units.length === 0) return;
       const current = resolveDisplayTemp(units, scopeKey);
 
       // Mixed → first snap UI to eco 24; further +/- (or wait 2s at 24) apply via debounce
       if (current === 'Mixed') {
         setDraftTemps((prev) => ({ ...prev, [scopeKey]: TEMP_ECO }));
-        scheduleBulkTemperature(scopeKey, units, TEMP_ECO, skipSuperlock);
+        scheduleBulkTemperature(
+          scopeKey,
+          units,
+          TEMP_ECO,
+          skipSuperlock,
+          ignoreAllTargets
+        );
         return;
       }
 
       const next = Math.max(TEMP_MIN, Math.min(TEMP_MAX, current + increment));
       setDraftTemps((prev) => ({ ...prev, [scopeKey]: next }));
-      scheduleBulkTemperature(scopeKey, units, next, skipSuperlock);
+      scheduleBulkTemperature(
+        scopeKey,
+        units,
+        next,
+        skipSuperlock,
+        ignoreAllTargets
+      );
     },
     [resolveDisplayTemp, scheduleBulkTemperature]
   );
 
   const handleScopeTempSet = useCallback(
-    (scopeKey: string, units: ACUnit[], temperature: number, skipSuperlock = true) => {
+    (
+      scopeKey: string,
+      units: ACUnit[],
+      temperature: number,
+      skipSuperlock = true,
+      ignoreAllTargets = true
+    ) => {
       if (units.length === 0) return;
       const clamped = Math.max(TEMP_MIN, Math.min(TEMP_MAX, Math.round(temperature)));
       setDraftTemps((prev) => ({ ...prev, [scopeKey]: clamped }));
-      scheduleBulkTemperature(scopeKey, units, clamped, skipSuperlock);
+      scheduleBulkTemperature(
+        scopeKey,
+        units,
+        clamped,
+        skipSuperlock,
+        ignoreAllTargets
+      );
     },
     [scheduleBulkTemperature]
   );
 
   const handleScopeEco = useCallback(
-    (scopeKey: string, units: ACUnit[], skipSuperlock = true) => {
+    (
+      scopeKey: string,
+      units: ACUnit[],
+      skipSuperlock = true,
+      ignoreAllTargets = true
+    ) => {
       if (units.length === 0) return;
       const existing = tempDebounceTimers.current[scopeKey];
       if (existing) {
@@ -554,7 +634,12 @@ export function Dashboard({
         delete tempDebounceTimers.current[scopeKey];
       }
       setDraftTemps((prev) => ({ ...prev, [scopeKey]: TEMP_ECO }));
-      void applyBulkTemperature(units, TEMP_ECO, skipSuperlock).finally(() => {
+      void applyBulkTemperature(
+        units,
+        TEMP_ECO,
+        skipSuperlock,
+        ignoreAllTargets
+      ).finally(() => {
         setDraftTemps((prev) => {
           const next = { ...prev };
           delete next[scopeKey];
@@ -567,6 +652,7 @@ export function Dashboard({
 
   // Active Control Frame — skip superlock for org/venue; allow direct control of a single device
   const skipSuperlockForFrame = !globalUnitId;
+  const ignoreAllForFrame = !globalUnitId;
 
   const handleBulkPowerToggle = (forceState?: boolean) => {
     if (bulkPowerPending) return;
@@ -575,7 +661,12 @@ export function Dashboard({
       forceState !== undefined
         ? forceState
         : !targets.every((u) => u.isOn);
-    void applyBulkPower(selectedUnits, newState, skipSuperlockForFrame);
+    void applyBulkPower(
+      selectedUnits,
+      newState,
+      skipSuperlockForFrame,
+      ignoreAllForFrame
+    );
   };
 
   const handleBulkTempAdjust = (increment: number) => {
@@ -583,7 +674,8 @@ export function Dashboard({
       frameTempScopeKey,
       selectedUnits,
       increment,
-      skipSuperlockForFrame
+      skipSuperlockForFrame,
+      ignoreAllForFrame
     );
   };
 
@@ -592,12 +684,18 @@ export function Dashboard({
       frameTempScopeKey,
       selectedUnits,
       temp,
-      skipSuperlockForFrame
+      skipSuperlockForFrame,
+      ignoreAllForFrame
     );
   };
 
   const handleBulkEco = () => {
-    handleScopeEco(frameTempScopeKey, selectedUnits, skipSuperlockForFrame);
+    handleScopeEco(
+      frameTempScopeKey,
+      selectedUnits,
+      skipSuperlockForFrame,
+      ignoreAllForFrame
+    );
   };
 
   const handleOrgPowerToggle = (e: React.MouseEvent) => {
@@ -605,12 +703,12 @@ export function Dashboard({
     if (bulkPowerPending) return;
     const targets = orgUnits.filter(isOrgVenueBulkTarget);
     const allOn = targets.length > 0 && targets.every((u) => u.isOn);
-    void applyBulkPower(orgUnits, !allOn, true);
+    void applyBulkPower(orgUnits, !allOn, true, true);
   };
 
   const handleOrgTempAdjust = (increment: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    handleScopeTempAdjust(orgTempScopeKey, orgUnits, increment, true);
+    handleScopeTempAdjust(orgTempScopeKey, orgUnits, increment, true, true);
   };
 
   const tempFromMobileArcPoint = (clientX: number, clientY: number): number | null => {
@@ -694,13 +792,19 @@ export function Dashboard({
     const venueUnits = liveUnits.filter((u) => u.venueId === venueId);
     const targets = venueUnits.filter(isOrgVenueBulkTarget);
     const anyOn = targets.some((u) => u.isOn);
-    void applyBulkPower(venueUnits, !anyOn, true);
+    void applyBulkPower(venueUnits, !anyOn, true, true);
   };
 
   const handleVenueTempAdjust = (venueId: string, increment: number, e: React.MouseEvent) => {
     e.stopPropagation();
     const venueUnits = liveUnits.filter((u) => u.venueId === venueId);
-    handleScopeTempAdjust(getVenueTempScopeKey(venueId), venueUnits, increment, true);
+    handleScopeTempAdjust(
+      getVenueTempScopeKey(venueId),
+      venueUnits,
+      increment,
+      true,
+      true
+    );
   };
 
   const handleVenueLockChange = (venueId: string, status: 'Unlocked' | 'Locked' | 'Super Locked') => {
@@ -724,33 +828,44 @@ export function Dashboard({
     }
 
     void (async () => {
-      const results = await Promise.allSettled(
-        targets.map(async (u) => {
-          const result = await setDeviceMode(u.id, mode);
-          if (result.applied && onUpdateDevice) {
-            onUpdateDevice(u.id, { mode: modeLabel });
-          }
-          return result;
-        })
-      );
+      try {
+        await withEventOverrideGuard({
+          deviceIds: targets.map((u) => u.id),
+          ignoreAllTargets: ignoreAllForFrame,
+          onNeedConfirm: (pending) => setEventOverridePending(pending),
+          apply: async () => {
+            const results = await Promise.allSettled(
+              targets.map(async (u) => {
+                const result = await setDeviceMode(u.id, mode);
+                if (result.applied && onUpdateDevice) {
+                  onUpdateDevice(u.id, { mode: modeLabel });
+                }
+                return result;
+              })
+            );
 
-      const applied = results.filter(
-        (r) => r.status === 'fulfilled' && r.value.applied
-      ).length;
-      const skipped = results.filter(
-        (r) => r.status === 'fulfilled' && r.value.skipped
-      ).length;
-      const failed = results.filter((r) => r.status === 'rejected').length;
+            const applied = results.filter(
+              (r) => r.status === 'fulfilled' && r.value.applied
+            ).length;
+            const skipped = results.filter(
+              (r) => r.status === 'fulfilled' && r.value.skipped
+            ).length;
+            const failed = results.filter((r) => r.status === 'rejected').length;
 
-      if (applied === 0 && skipped > 0 && failed === 0) {
-        showBulkToast('No devices have this mode IR command', 'info');
-      } else if (skipped > 0 || failed > 0) {
-        showBulkToast(
-          `Mode set on ${applied}/${targets.length} devices` +
-            (skipped ? ` · ${skipped} skipped (no IR)` : '') +
-            (failed ? ` · ${failed} failed` : ''),
-          failed === targets.length ? 'error' : 'info'
-        );
+            if (applied === 0 && skipped > 0 && failed === 0) {
+              showBulkToast('No devices have this mode IR command', 'info');
+            } else if (skipped > 0 || failed > 0) {
+              showBulkToast(
+                `Mode set on ${applied}/${targets.length} devices` +
+                  (skipped ? ` · ${skipped} skipped (no IR)` : '') +
+                  (failed ? ` · ${failed} failed` : ''),
+                failed === targets.length ? 'error' : 'info'
+              );
+            }
+          },
+        });
+      } catch {
+        showBulkToast('Failed to set mode', 'error');
       }
     })();
   };
@@ -769,33 +884,44 @@ export function Dashboard({
     }
 
     void (async () => {
-      const results = await Promise.allSettled(
-        targets.map(async (u) => {
-          const result = await setDeviceFan(u.id, fan);
-          if (result.applied && onUpdateDevice) {
-            onUpdateDevice(u.id, { fanSpeed: fanLabel });
-          }
-          return result;
-        })
-      );
+      try {
+        await withEventOverrideGuard({
+          deviceIds: targets.map((u) => u.id),
+          ignoreAllTargets: ignoreAllForFrame,
+          onNeedConfirm: (pending) => setEventOverridePending(pending),
+          apply: async () => {
+            const results = await Promise.allSettled(
+              targets.map(async (u) => {
+                const result = await setDeviceFan(u.id, fan);
+                if (result.applied && onUpdateDevice) {
+                  onUpdateDevice(u.id, { fanSpeed: fanLabel });
+                }
+                return result;
+              })
+            );
 
-      const applied = results.filter(
-        (r) => r.status === 'fulfilled' && r.value.applied
-      ).length;
-      const skipped = results.filter(
-        (r) => r.status === 'fulfilled' && r.value.skipped
-      ).length;
-      const failed = results.filter((r) => r.status === 'rejected').length;
+            const applied = results.filter(
+              (r) => r.status === 'fulfilled' && r.value.applied
+            ).length;
+            const skipped = results.filter(
+              (r) => r.status === 'fulfilled' && r.value.skipped
+            ).length;
+            const failed = results.filter((r) => r.status === 'rejected').length;
 
-      if (applied === 0 && skipped > 0 && failed === 0) {
-        showBulkToast('No devices have this fan IR command', 'info');
-      } else if (skipped > 0 || failed > 0) {
-        showBulkToast(
-          `Fan set on ${applied}/${targets.length} devices` +
-            (skipped ? ` · ${skipped} skipped (no IR)` : '') +
-            (failed ? ` · ${failed} failed` : ''),
-          failed === targets.length ? 'error' : 'info'
-        );
+            if (applied === 0 && skipped > 0 && failed === 0) {
+              showBulkToast('No devices have this fan IR command', 'info');
+            } else if (skipped > 0 || failed > 0) {
+              showBulkToast(
+                `Fan set on ${applied}/${targets.length} devices` +
+                  (skipped ? ` · ${skipped} skipped (no IR)` : '') +
+                  (failed ? ` · ${failed} failed` : ''),
+                failed === targets.length ? 'error' : 'info'
+              );
+            }
+          },
+        });
+      } catch {
+        showBulkToast('Failed to set fan speed', 'error');
       }
     })();
   };
@@ -2643,6 +2769,11 @@ export function Dashboard({
           </div>
         </form>
       </Modal>
+
+      <EventOverrideModal
+        pending={eventOverridePending}
+        onClose={() => setEventOverridePending(null)}
+      />
 
     </div>
   );
