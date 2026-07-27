@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import { CustomDropdown } from '../../components/ui/CustomDropdown';
 import { MultiSelectDropdown } from '../../components/ui/MultiSelectDropdown';
-import { CheckCircle2, AlertTriangle, MapPin, MonitorSmartphone, Activity, Building2, Copy, Check } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, MapPin, MonitorSmartphone, Activity, Building2, Copy, Check, Info } from 'lucide-react';
 import { useManagerWorkspace } from '../context/ManagerWorkspaceContext';
 
 /** Shared manager modals (legacy root-level modals; CSS unchanged) */
@@ -41,10 +41,12 @@ export function ManagerModals() {
     energyView, setEnergyView,
     filteredUnits, aggregatedEnergyData, faultyDevices, handleDownloadReport,
     showAddEventModal, setShowAddEventModal,
-    eventDeviceId, setEventDeviceId, eventName, setEventName, eventTemp, setEventTemp,
-    eventIsRecurring, setEventIsRecurring, eventStartDate, setEventStartDate,
-    eventEndDate, setEventEndDate, eventDays, setEventDays,
-    eventIsOnOff, setEventIsOnOff, eventOnOffAction, setEventOnOffAction, eventTime, setEventTime,
+    eventDeviceId, setEventDeviceId, eventDeviceName, setEventDeviceName,
+    eventOrganizationId, setEventOrganizationId, eventVenueId, setEventVenueId,
+    eventName, setEventName, eventTemp, setEventTemp,
+    eventDays, setEventDays,
+    eventOnOffAction, setEventOnOffAction, eventTime, setEventTime,
+    eventEndTime, setEventEndTime, eventRemote, setEventRemote,
     handleAddUser, closeAddUserModal, openUserDetailModal, closeUserDetailModal,
     handleAddOrg, handleAddVenue, handleAddDevice, handleUpdateDevice, handleConfirmDelete,
     closeAddEventModal, handleAddEvent,
@@ -948,53 +950,48 @@ export function ManagerModals() {
                     placeholder="e.g., Morning Start"
                   />
                 </div>
-      
+
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Select Device</label>
-                  <select
-                    value={eventDeviceId}
-                    onChange={(e) => setEventDeviceId(e.target.value)}
-                    className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                  >
-                    <option value="">Select a device...</option>
-                    {units.map(u => (
-                      <option key={u.id} value={u.id}>{u.name} ({u.id})</option>
-                    ))}
-                  </select>
-                </div>
-      
-                <div className="flex p-1 bg-slate-100 rounded-lg">
-                  <button
-                    onClick={() => setEventIsOnOff(true)}
-                    className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                      eventIsOnOff ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    Power Event
-                  </button>
-                  <button
-                    onClick={() => setEventIsOnOff(false)}
-                    className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                      !eventIsOnOff ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    Temperature Event
-                  </button>
-                </div>
-      
-                {eventIsOnOff ? (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Action</label>
-                    <select
-                      value={eventOnOffAction}
-                      onChange={(e) => setEventOnOffAction(e.target.value as 'ON' | 'OFF')}
-                      className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                    >
-                      <option value="ON">Turn ON</option>
-                      <option value="OFF">Turn OFF</option>
-                    </select>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Device</label>
+                  <div className="w-full p-2.5 border border-slate-200 rounded-lg bg-slate-50 text-sm font-semibold text-slate-800">
+                    {eventDeviceName ||
+                      units.find((u) => u.id === eventDeviceId)?.name ||
+                      'Selected device'}
                   </div>
-                ) : (
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Event Type</label>
+                  <div className="flex p-1 bg-slate-100 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setEventOnOffAction('ON')}
+                      className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                        eventOnOffAction === 'ON'
+                          ? 'bg-white text-emerald-700 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      On
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEventOnOffAction('OFF');
+                        setEventRemote('lock');
+                      }}
+                      className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                        eventOnOffAction === 'OFF'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      Off
+                    </button>
+                  </div>
+                </div>
+
+                {eventOnOffAction === 'ON' && (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Target Temperature (°C)</label>
                     <div className="flex items-center gap-4">
@@ -1006,90 +1003,117 @@ export function ManagerModals() {
                         onChange={(e) => setEventTemp(e.target.value)}
                         className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                       />
-                      <span className="text-sm font-medium w-8">{eventTemp}°</span>
+                      <span className="text-sm font-bold text-slate-800 w-10 tabular-nums">{eventTemp}°</span>
                     </div>
                   </div>
                 )}
-      
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Time</label>
-                  <input
-                    type="time"
-                    value={eventTime}
-                    onChange={(e) => setEventTime(e.target.value)}
-                    className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  />
-                </div>
-      
-                <div className="flex items-center gap-2 mb-2">
-                  <input
-                    type="checkbox"
-                    id="eventIsRecurring"
-                    checked={eventIsRecurring}
-                    onChange={(e) => setEventIsRecurring(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
-                  />
-                  <label htmlFor="eventIsRecurring" className="text-sm font-medium text-slate-700">
-                    Recurring Event
-                  </label>
-                </div>
-      
-                {eventIsRecurring ? (
+
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Days of Week</label>
-                    <div className="flex flex-wrap gap-2">
-                      {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-                        <button
-                          key={day}
-                          onClick={() => {
-                            setEventDays(prev => 
-                              prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
-                            );
-                          }}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                            eventDays.includes(day)
-                              ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                              : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          {day}
-                        </button>
-                      ))}
-                    </div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
+                    <input
+                      type="time"
+                      value={eventTime}
+                      onChange={(e) => setEventTime(e.target.value)}
+                      className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">End Time</label>
+                    <input
+                      type="time"
+                      value={eventEndTime}
+                      onChange={(e) => setEventEndTime(e.target.value)}
+                      className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Days{' '}
+                    <span className="text-slate-400 font-normal">
+                      (optional — empty = one-time)
+                    </span>
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { value: 'Mon', label: 'Monday' },
+                      { value: 'Tue', label: 'Tuesday' },
+                      { value: 'Wed', label: 'Wednesday' },
+                      { value: 'Thu', label: 'Thursday' },
+                      { value: 'Fri', label: 'Friday' },
+                      { value: 'Sat', label: 'Saturday' },
+                      { value: 'Sun', label: 'Sunday' },
+                    ].map((day) => (
+                      <button
+                        key={day.value}
+                        type="button"
+                        onClick={() => {
+                          setEventDays((prev) =>
+                            prev.includes(day.value)
+                              ? prev.filter((d) => d !== day.value)
+                              : [...prev, day.value]
+                          );
+                        }}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          eventDays.includes(day.value)
+                            ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                            : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+                        }`}
+                        title={day.label}
+                      >
+                        {day.value}
+                      </button>
+                    ))}
+                  </div>
+                  {eventDays.length === 0 && (
+                    <p className="text-[10px] text-slate-400 mt-1.5 font-medium">
+                      One-time: runs once at the next start/end, then is deleted.
+                    </p>
+                  )}
+                </div>
+
+                {eventOnOffAction === 'ON' ? (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Remote Lock</label>
+                    <CustomDropdown
+                      value={eventRemote}
+                      onChange={(v) => setEventRemote(v as 'lock' | 'unlock')}
+                      options={[
+                        { value: 'unlock', label: 'Unlock' },
+                        { value: 'lock', label: 'Lock' },
+                      ]}
+                      placement="up"
+                    />
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
-                      <input
-                        type="date"
-                        value={eventStartDate}
-                        onChange={(e) => setEventStartDate(e.target.value)}
-                        className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">End Date</label>
-                      <input
-                        type="date"
-                        value={eventEndDate}
-                        onChange={(e) => setEventEndDate(e.target.value)}
-                        className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                      />
-                    </div>
+                  <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-100">
+                    <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-800 leading-relaxed">
+                      Off events always use <span className="font-bold">remote lock</span>.
+                      No one can change the AC with the physical remote while this event is active.
+                    </p>
                   </div>
                 )}
-      
+
                 <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 mt-6">
                   <button
+                    type="button"
                     onClick={closeAddEventModal}
                     className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors"
                   >
                     Cancel
                   </button>
                   <button
+                    type="button"
                     onClick={handleAddEvent}
-                    disabled={!eventName || !eventDeviceId || !eventTime || (eventIsRecurring && eventDays.length === 0) || (!eventIsRecurring && (!eventStartDate || !eventEndDate))}
+                    disabled={
+                      !eventName ||
+                      !eventDeviceId ||
+                      !eventTime ||
+                      !eventEndTime
+                    }
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Add Event

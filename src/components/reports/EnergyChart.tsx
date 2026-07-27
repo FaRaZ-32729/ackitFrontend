@@ -18,18 +18,33 @@ interface EnergyChartProps {
 
 type ViewType = 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 
+const VIEW_LABELS: Record<ViewType, string> = {
+  hourly: 'Hour',
+  daily: 'Day',
+  weekly: 'Week',
+  monthly: 'Month',
+  yearly: 'Year',
+};
+
 export function EnergyChart({ data, view: externalView, onViewChange }: EnergyChartProps) {
   const [internalView, setInternalView] = useState<ViewType>('daily');
-  
+
   const view = externalView || internalView;
   const setView = onViewChange || setInternalView;
 
-  const chartData = data[view];
+  const chartData = Array.isArray(data?.[view]) ? data[view] : [];
+  const totalKwh = chartData.reduce((sum, row) => sum + (Number(row.kwh) || 0), 0);
 
   return (
-    <div className="w-full h-full flex flex-col min-h-0">
-      <div className="flex items-center justify-center sm:justify-end mb-3 sm:mb-4 shrink-0">
-        <div className="flex w-full sm:w-auto bg-slate-100 p-1 rounded-xl overflow-x-auto scrollbar-hide">
+    <div className="w-full h-full flex flex-col min-h-0 gap-3">
+      <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0 px-1">
+        <p className="text-[11px] sm:text-xs font-bold text-slate-500 tabular-nums">
+          Total{' '}
+          <span className="text-slate-800 font-black">
+            {totalKwh.toLocaleString(undefined, { maximumFractionDigits: 1 })} kWh
+          </span>
+        </p>
+        <div className="flex w-full sm:w-auto bg-slate-100 p-1 rounded-xl overflow-x-auto scrollbar-hide gap-0.5">
           {(['hourly', 'daily', 'weekly', 'monthly', 'yearly'] as ViewType[]).map((v) => (
             <button
               key={v}
@@ -41,46 +56,69 @@ export function EnergyChart({ data, view: externalView, onViewChange }: EnergyCh
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              {v}
+              {VIEW_LABELS[v]}
             </button>
           ))}
         </div>
       </div>
-      <div className="flex-1 min-h-0 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-            <XAxis
-              dataKey="label"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }}
-              dy={8}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }}
-              width={40}
-            />
-            <Tooltip
-              cursor={{ fill: '#f8fafc' }}
-              contentStyle={{
-                backgroundColor: '#0f172a',
-                border: 'none',
-                borderRadius: '12px',
-                color: '#f8fafc',
-                boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-              }}
-              itemStyle={{ color: '#f8fafc', fontSize: '12px', fontWeight: '600' }}
-              formatter={(value: number) => [`${value.toLocaleString()} kWh`, 'Consumption']}
-            />
-            <Bar dataKey="kwh" fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={36} />
-          </BarChart>
-        </ResponsiveContainer>
+
+      <div className="flex-1 min-h-[220px] sm:min-h-[260px] w-full relative">
+        {chartData.length === 0 ? (
+          <div className="absolute inset-0 flex items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              No energy data for this period
+            </p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={chartData}
+              margin={{ top: 12, right: 8, left: 0, bottom: 4 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+              <XAxis
+                dataKey="label"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }}
+                dy={6}
+                interval="preserveStartEnd"
+                minTickGap={28}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }}
+                width={36}
+                tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v))}
+              />
+              <Tooltip
+                cursor={{ fill: '#f1f5f9' }}
+                contentStyle={{
+                  backgroundColor: '#0f172a',
+                  border: 'none',
+                  borderRadius: '12px',
+                  color: '#f8fafc',
+                  boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                  fontSize: '12px',
+                }}
+                itemStyle={{ color: '#f8fafc', fontSize: '12px', fontWeight: 600 }}
+                labelStyle={{ color: '#94a3b8', marginBottom: 4, fontWeight: 700 }}
+                formatter={(value: number) => [
+                  `${Number(value).toLocaleString()} kWh`,
+                  'Consumption',
+                ]}
+              />
+              <Bar
+                dataKey="kwh"
+                fill="#3b82f6"
+                radius={[6, 6, 0, 0]}
+                maxBarSize={40}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   );
 }
-

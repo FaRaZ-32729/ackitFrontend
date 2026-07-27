@@ -64,17 +64,24 @@ export function EventScheduler({
   };
 
   return (
-    <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-semibold text-slate-800">Schedule & Events</h3>
+    <div className="bg-white p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl shadow-sm border border-slate-100">
+      <div className="flex items-center justify-between gap-3 mb-4 sm:mb-6">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+            Schedules
+          </p>
+          <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight">
+            Events
+          </h3>
+        </div>
         {!isAdding && canControlEvents && (
           <button
+            type="button"
             onClick={() => setIsAdding(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-sm font-medium transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-xl text-xs sm:text-sm font-bold transition-colors shrink-0"
           >
             <Plus className="w-4 h-4" />
-            <span className="hidden xs:inline">Add Event</span>
-            <span className="xs:hidden">Add</span>
+            Add Event
           </button>
         )}
       </div>
@@ -226,45 +233,55 @@ export function EventScheduler({
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {events.length === 0 ? (
-          <div className="text-center py-8 text-slate-500 text-sm">
-            No events scheduled.
+          <div className="md:col-span-2 text-center py-10 text-slate-400 text-xs font-bold uppercase tracking-wider border border-dashed border-slate-200 rounded-2xl bg-slate-50/40">
+            No events scheduled
           </div>
         ) : (
           events.map((event) => (
             <div
               key={event.id}
-              className={`flex items-center justify-between p-3 md:p-4 rounded-xl border transition-colors ${
+              className={`flex items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl border transition-colors ${
                 event.enabled
                   ? 'bg-white border-slate-200'
                   : 'bg-slate-50 border-slate-100 opacity-75'
               }`}
             >
-              <div className="flex items-center gap-3 md:gap-4">
+              <div className="flex items-center gap-3 min-w-0">
                 <div
-                  className={`p-2 rounded-full ${
+                  className={`p-2 rounded-xl shrink-0 ${
                     event.enabled ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-400'
                   }`}
                 >
-                  <Clock className="w-4 h-4 md:w-5 md:h-5" />
+                  <Clock className="w-4 h-4" />
                 </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-slate-800 text-sm md:text-base">{event.name || 'Event'} - {event.time}</span>
-                    <span className="text-[10px] md:text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
-                      {event.action} {event.targetTemp ? `${event.targetTemp}°C` : ''}
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-bold text-slate-800 text-sm truncate">
+                      {event.name || 'Event'}
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold uppercase tracking-wider">
+                      {event.action}
+                      {event.targetTemp ? ` ${event.targetTemp}°C` : ''}
                     </span>
                   </div>
-                  <div className="text-[10px] md:text-xs text-slate-500 mt-0.5">
-                    {event.isRecurring 
-                      ? event.days.join(', ') 
-                      : `${event.startDate || ''} to ${event.endDate || ''}`}
-                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5 font-semibold tabular-nums truncate">
+                    {event.time}
+                    {event.endTime ? ` — ${event.endTime}` : ''}
+                    {' · '}
+                    {event.isRecurring
+                      ? (event.days || []).join(', ') || 'Recurring'
+                      : 'One-time'}
+                  </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 md:gap-3">
-                <label className={`relative inline-flex items-center ${canControlEvents ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
+              <div className="flex items-center gap-2 shrink-0">
+                <label
+                  className={`relative inline-flex items-center ${
+                    canControlEvents ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+                  }`}
+                >
                   <input
                     type="checkbox"
                     className="sr-only peer"
@@ -272,15 +289,16 @@ export function EventScheduler({
                     onChange={() => canControlEvents && onToggleEvent(event.id)}
                     disabled={!canControlEvents}
                   />
-                  <div className="w-8 h-4 md:w-9 md:h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 md:after:h-4 md:after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500" />
                 </label>
                 {canControlEvents && (
                   <button
+                    type="button"
                     onClick={() => onDeleteEvent(event.id)}
-                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                     title="Delete event"
                   >
-                    <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 )}
               </div>

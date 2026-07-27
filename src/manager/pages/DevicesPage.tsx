@@ -16,14 +16,34 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { CustomDropdown } from '../../components/ui/CustomDropdown';
+import { Modal } from '../../components/ui/Modal';
 import { type ACUnit } from '../../types';
 import { getDevicesByVenue, setDevicePower, setDeviceRemote, setDeviceTemperature } from '../../api/deviceApi';
 import { getVenuesByOrganization } from '../../api/venueApi';
+import {
+  listScheduleEvents,
+  scheduleEventToACEvent,
+  setScheduleEventEnabled,
+  deleteScheduleEvent,
+} from '../../api/eventApi';
 import { getAppSocket } from '../../api/brandSocket';
-import type { Venue } from '../../types';
+import type { Venue, ACEvent } from '../../types';
 
 const ALL_VENUES_ID = 'all';
 
+/** HH:mm (24h) → 12h e.g. 14:30 → 2:30 PM */
+function formatTime12h(timeStr?: string): string {
+  if (!timeStr) return '—';
+  const parts = String(timeStr).split(':');
+  if (parts.length < 2) return timeStr;
+  let hours = parseInt(parts[0], 10);
+  const minutes = parts[1].padStart(2, '0');
+  if (!Number.isFinite(hours)) return timeStr;
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  return `${hours}:${minutes} ${ampm}`;
+}
 async function fetchDevicesForSelection(
   venueId: string,
   orgVenueList: Venue[]
@@ -55,6 +75,9 @@ export function DevicesPage() {
     setDeletingId, setDeleteType, setDeleteError,
     setShowAddEventModal,
     setEventDeviceId,
+    setEventDeviceName,
+    setEventOrganizationId,
+    setEventVenueId,
     showAddDevice,
     selectedDeviceVenueId, setSelectedDeviceVenueId,
     subscribeDeviceEventAdd,
@@ -71,6 +94,12 @@ export function DevicesPage() {
   const [devicesError, setDevicesError] = useState('');
   const [powerPendingId, setPowerPendingId] = useState<string | null>(null);
   const [powerError, setPowerError] = useState('');
+  const [eventPendingDelete, setEventPendingDelete] = useState<{
+    deviceId: string;
+    event: ACEvent;
+  } | null>(null);
+  const [deletingEvent, setDeletingEvent] = useState(false);
+  const [eventActionError, setEventActionError] = useState('');
   const prevShowAddDevice = useRef(showAddDevice);
   const tempDebounceTimers = useRef<Record<string, number>>({});
   const pendingVenueDeepLink = useRef<string | null>(
@@ -225,6 +254,52 @@ export function DevicesPage() {
 
     return () => { active = false; };
   }, [selectedVenueId, orgVenues, loadingVenues, setUnits]);
+
+  const deviceIdsKey = useMemo(
+    () =>
+      venueDevices
+        .map((d) => d.id)
+        .sort()
+        .join(','),
+    [venueDevices]
+  );
+
+  // Attach device-scoped schedule events from API to each device row
+  useEffect(() => {
+    let active = true;
+    if (!selectedOrgId || !deviceIdsKey) return;
+
+    listScheduleEvents({
+      organizationId: selectedOrgId,
+      scope: 'device',
+    })
+      .then((events) => {
+        if (!active) return;
+        const byDevice = new Map<string, ACEvent[]>();
+        for (const ev of events) {
+          if (!ev.deviceId) continue;
+          const mapped = scheduleEventToACEvent(ev);
+          const list = byDevice.get(ev.deviceId) || [];
+          list.push(mapped);
+          byDevice.set(ev.deviceId, list);
+        }
+        setVenueDevices((prev) =>
+          prev.map((u) => {
+            const fromApi = byDevice.get(u.id) || [];
+            const apiIds = new Set(fromApi.map((e) => e.id));
+            const localOnly = (u.events || []).filter((e) => !apiIds.has(e.id));
+            return { ...u, events: [...fromApi, ...localOnly] };
+          })
+        );
+      })
+      .catch(() => {
+        /* leave events empty */
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedOrgId, deviceIdsKey]);
 
   // Refresh list after Add Device modal closes successfully
   useEffect(() => {
@@ -420,11 +495,24 @@ export function DevicesPage() {
     };
 
     socket.on('device:remote', onDeviceRemote);
+
+    const onEventDeleted = (payload: { id?: string }) => {
+      if (!payload?.id) return;
+      setVenueDevices((prev) =>
+        prev.map((u) => ({
+          ...u,
+          events: (u.events || []).filter((e) => e.id !== payload.id),
+        }))
+      );
+    };
+    socket.on('event:deleted', onEventDeleted);
+
     return () => {
       socket.off('device:state', onDeviceState);
       socket.off('device:alert', onDeviceAlert);
       socket.off('device:status', onDeviceStatus);
       socket.off('device:remote', onDeviceRemote);
+      socket.off('event:deleted', onEventDeleted);
     };
   }, [onUpdateDevice]);
 
@@ -449,6 +537,79 @@ export function DevicesPage() {
   const updateLocalDevice = (id: string, data: Partial<ACUnit>) => {
     setVenueDevices((prev) => prev.map((u) => (u.id === id ? { ...u, ...data } : u)));
     onUpdateDevice(id, data);
+  };
+
+  const handleConfirmDeleteEvent = async () => {
+    if (!eventPendingDelete) return;
+    const { deviceId, event } = eventPendingDelete;
+    setDeletingEvent(true);
+    setEventActionError('');
+    try {
+      await deleteScheduleEvent(event.id);
+      setVenueDevices((prev) => {
+        const next = prev.map((u) =>
+          u.id === deviceId
+            ? {
+                ...u,
+                events: (u.events || []).filter((e) => e.id !== event.id),
+              }
+            : u
+        );
+        const updated = next.find((u) => u.id === deviceId);
+        if (updated) onUpdateDevice(deviceId, { events: updated.events });
+        return next;
+      });
+      setEventPendingDelete(null);
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || 'Failed to delete event';
+      setEventActionError(message);
+    } finally {
+      setDeletingEvent(false);
+    }
+  };
+
+  const handleToggleEventEnabled = async (deviceId: string, event: ACEvent) => {
+    const nextEnabled = !event.enabled;
+    setEventActionError('');
+
+    setVenueDevices((prev) => {
+      const next = prev.map((u) =>
+        u.id === deviceId
+          ? {
+              ...u,
+              events: (u.events || []).map((e) =>
+                e.id === event.id ? { ...e, enabled: nextEnabled } : e
+              ),
+            }
+          : u
+      );
+      const updated = next.find((u) => u.id === deviceId);
+      if (updated) onUpdateDevice(deviceId, { events: updated.events });
+      return next;
+    });
+
+    try {
+      await setScheduleEventEnabled(event.id, nextEnabled);
+    } catch {
+      setVenueDevices((prev) => {
+        const next = prev.map((u) =>
+          u.id === deviceId
+            ? {
+                ...u,
+                events: (u.events || []).map((e) =>
+                  e.id === event.id ? { ...e, enabled: event.enabled } : e
+                ),
+              }
+            : u
+        );
+        const updated = next.find((u) => u.id === deviceId);
+        if (updated) onUpdateDevice(deviceId, { events: updated.events });
+        return next;
+      });
+      setEventActionError('Failed to update event status');
+    }
   };
 
   const changeDeviceLock = async (
@@ -915,6 +1076,11 @@ export function DevicesPage() {
                                             type="button"
                                             onClick={() => {
                                               setEventDeviceId(unit.id);
+                                              setEventDeviceName(unit.name);
+                                              setEventOrganizationId(
+                                                unit.organizationId || selectedOrgId || ''
+                                              );
+                                              setEventVenueId(unit.venueId || '');
                                               setShowAddEventModal(true);
                                             }}
                                             className="text-[10px] font-black text-blue-600 hover:text-blue-700 flex items-center gap-1 bg-blue-50 px-2 py-1.5 rounded-lg hover:bg-blue-100 transition-all cursor-pointer shrink-0"
@@ -922,43 +1088,110 @@ export function DevicesPage() {
                                             <Plus className="w-3 h-3 stroke-[2.5]" /> Add Event
                                           </button>
                                         </div>
+                                        {eventActionError && (
+                                          <p className="text-[10px] text-red-600 font-semibold mb-2">
+                                            {eventActionError}
+                                          </p>
+                                        )}
                                         {unit.events && unit.events.length > 0 ? (
                                           <div className="space-y-2">
-                                            {unit.events.map(event => (
-                                              <div key={event.id} className="bg-slate-50/50 p-3 rounded-xl border border-slate-100/70 flex justify-between items-center gap-3">
+                                            {unit.events.map((event) => (
+                                              <div
+                                                key={event.id}
+                                                className="bg-slate-50/50 p-3 rounded-xl border border-slate-100/70 flex justify-between items-center gap-3"
+                                              >
                                                 <div className="min-w-0">
-                                                  <p className="font-bold text-slate-800 text-xs truncate">{event.name || 'Event'} - {event.time}</p>
+                                                  <p className="font-bold text-slate-800 text-xs truncate">
+                                                    {event.name || 'Event'}
+                                                  </p>
+                                                  <p className="text-[10px] text-slate-600 mt-0.5 font-semibold tabular-nums">
+                                                    {formatTime12h(event.time)}
+                                                    <span className="text-slate-300 mx-1">—</span>
+                                                    {formatTime12h(event.endTime)}
+                                                  </p>
                                                   <p className="text-[10px] text-slate-400 mt-0.5 font-semibold truncate">
                                                     {event.isRecurring
-                                                      ? event.days.join(', ')
-                                                      : `${event.startDate || ''} to ${event.endDate || ''}`}
+                                                      ? (event.days || []).join(', ')
+                                                      : 'One-time'}
                                                   </p>
                                                 </div>
-                                                <div className="flex items-center gap-3 shrink-0">
-                                                  <span className={`px-2 py-1 rounded-full text-[9px] font-black tracking-wider uppercase ${
-                                                    event.action === 'ON' ? 'bg-emerald-100 text-emerald-700' :
-                                                    event.action === 'OFF' ? 'bg-slate-200 text-slate-700' :
-                                                    'bg-blue-100 text-blue-700'
-                                                  }`}>
-                                                    {event.action} {event.targetTemp ? `${event.targetTemp}°C` : ''}
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                  <span
+                                                    className={`px-2 py-1 rounded-full text-[9px] font-black tracking-wider uppercase ${
+                                                      event.action === 'ON'
+                                                        ? 'bg-emerald-100 text-emerald-700'
+                                                        : event.action === 'OFF'
+                                                          ? 'bg-slate-200 text-slate-700'
+                                                          : 'bg-blue-100 text-blue-700'
+                                                    }`}
+                                                  >
+                                                    {event.action}{' '}
+                                                    {event.targetTemp
+                                                      ? `${event.targetTemp}°C`
+                                                      : ''}
                                                   </span>
                                                   <button
                                                     type="button"
                                                     onClick={() => {
-                                                      updateLocalDevice(unit.id, {
-                                                        events: unit.events.map(e => e.id === event.id ? { ...e, enabled: !e.enabled } : e)
+                                                      setEventActionError('');
+                                                      setEventPendingDelete({
+                                                        deviceId: unit.id,
+                                                        event,
                                                       });
                                                     }}
-                                                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${event.enabled ? 'bg-blue-500' : 'bg-slate-300'}`}
+                                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
+                                                    title="Delete event"
                                                   >
-                                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${event.enabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                                                    <Trash2 className="w-3.5 h-3.5" />
                                                   </button>
+                                                  <div className="flex flex-col items-center gap-0.5">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() =>
+                                                        void handleToggleEventEnabled(
+                                                          unit.id,
+                                                          event
+                                                        )
+                                                      }
+                                                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+                                                        event.enabled
+                                                          ? 'bg-blue-500'
+                                                          : 'bg-slate-300'
+                                                      }`}
+                                                      title={
+                                                        event.enabled
+                                                          ? 'Active — click to deactivate'
+                                                          : 'Inactive — click to activate'
+                                                      }
+                                                    >
+                                                      <span
+                                                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                                                          event.enabled
+                                                            ? 'translate-x-4.5'
+                                                            : 'translate-x-1'
+                                                        }`}
+                                                      />
+                                                    </button>
+                                                    <span
+                                                      className={`text-[8px] font-black uppercase tracking-wider ${
+                                                        event.enabled
+                                                          ? 'text-blue-600'
+                                                          : 'text-slate-400'
+                                                      }`}
+                                                    >
+                                                      {event.enabled
+                                                        ? 'Active'
+                                                        : 'Inactive'}
+                                                    </span>
+                                                  </div>
                                                 </div>
                                               </div>
                                             ))}
                                           </div>
                                         ) : (
-                                          <p className="text-xs text-slate-400 italic bg-slate-50/50 p-3 rounded-xl border border-slate-100/50 text-center font-semibold">No schedules configured.</p>
+                                          <p className="text-xs text-slate-400 italic bg-slate-50/50 p-3 rounded-xl border border-slate-100/50 text-center font-semibold">
+                                            No schedules configured.
+                                          </p>
                                         )}
                                       </div>
                                     </td>
@@ -973,6 +1206,52 @@ export function DevicesPage() {
                   </div>
                 </div>
               </div>
+
+      <Modal
+        isOpen={!!eventPendingDelete}
+        onClose={() => {
+          if (deletingEvent) return;
+          setEventPendingDelete(null);
+          setEventActionError('');
+        }}
+        title="Delete Event"
+        subtitle={
+          eventPendingDelete
+            ? `Remove “${eventPendingDelete.event.name || 'Event'}” from this device?`
+            : undefined
+        }
+      >
+        <div className="p-5 sm:p-6 space-y-4">
+          <p className="text-sm text-slate-600 font-medium">
+            This will permanently delete the schedule and stop its queue jobs.
+            This action cannot be undone.
+          </p>
+          {eventActionError && (
+            <p className="text-xs text-red-600 font-semibold">{eventActionError}</p>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              disabled={deletingEvent}
+              onClick={() => {
+                setEventPendingDelete(null);
+                setEventActionError('');
+              }}
+              className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-600 hover:bg-slate-200 cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={deletingEvent}
+              onClick={() => void handleConfirmDeleteEvent()}
+              className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-red-600 text-white hover:bg-red-700 cursor-pointer disabled:opacity-50"
+            >
+              {deletingEvent ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }

@@ -9,6 +9,8 @@ import {
   type DeviceBrandOption,
 } from '../../api/deviceApi';
 import { getVenuesByOrganization } from '../../api/venueApi';
+import { createScheduleEvent, scheduleEventToACEvent } from '../../api/eventApi';
+import type { ACEvent } from '../../types';
 
 export interface ManagerWorkspaceProps {
   units: ACUnit[];
@@ -131,13 +133,20 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     message: string;
     type: 'success' | 'error' | 'info';
   } | null>(null);
+  const deviceToastTimer = useRef<number | null>(null);
 
   const showDeviceToast = (
     message: string,
     type: 'success' | 'error' | 'info' = 'error'
   ) => {
+    if (deviceToastTimer.current) {
+      window.clearTimeout(deviceToastTimer.current);
+    }
     setDeviceToast({ message, type });
-    window.setTimeout(() => setDeviceToast(null), 3500);
+    deviceToastTimer.current = window.setTimeout(() => {
+      setDeviceToast(null);
+      deviceToastTimer.current = null;
+    }, 2500);
   };
   const [isAddingDevice, setIsAddingDevice] = useState(false);
 
@@ -384,15 +393,16 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
   // Add Event Modal State
   const [showAddEventModal, setShowAddEventModal] = useState(false);
   const [eventDeviceId, setEventDeviceId] = useState('');
+  const [eventDeviceName, setEventDeviceName] = useState('');
+  const [eventOrganizationId, setEventOrganizationId] = useState('');
+  const [eventVenueId, setEventVenueId] = useState('');
   const [eventName, setEventName] = useState('');
   const [eventTemp, setEventTemp] = useState('22');
-  const [eventIsRecurring, setEventIsRecurring] = useState(false);
-  const [eventStartDate, setEventStartDate] = useState('');
-  const [eventEndDate, setEventEndDate] = useState('');
   const [eventDays, setEventDays] = useState<string[]>([]);
-  const [eventIsOnOff, setEventIsOnOff] = useState(false);
   const [eventOnOffAction, setEventOnOffAction] = useState<'ON' | 'OFF'>('ON');
   const [eventTime, setEventTime] = useState('08:00');
+  const [eventEndTime, setEventEndTime] = useState('18:00');
+  const [eventRemote, setEventRemote] = useState<'lock' | 'unlock'>('unlock');
 
   const handleAddUser = async () => {
     if (addUserStep !== 'details') return;
@@ -626,45 +636,65 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
   const closeAddEventModal = () => {
     setShowAddEventModal(false);
     setEventDeviceId('');
+    setEventDeviceName('');
+    setEventOrganizationId('');
+    setEventVenueId('');
     setEventName('');
     setEventTemp('22');
-    setEventIsRecurring(false);
-    setEventStartDate('');
-    setEventEndDate('');
     setEventDays([]);
-    setEventIsOnOff(false);
     setEventOnOffAction('ON');
     setEventTime('08:00');
+    setEventEndTime('18:00');
+    setEventRemote('unlock');
   };
 
-  const handleAddEvent = () => {
-    if (!eventDeviceId || !eventName || !eventTime) return;
+  const handleAddEvent = async () => {
+    if (!eventDeviceId || !eventName || !eventTime || !eventEndTime) return;
 
     const device = units.find((u) => u.id === eventDeviceId);
-
-    const newEvent = {
-      id: `evt-${Date.now()}`,
-      name: eventName,
-      time: eventTime,
-      action: eventIsOnOff ? eventOnOffAction : ('SET_TEMP' as const),
-      targetTemp: eventIsOnOff ? undefined : parseInt(eventTemp),
-      isRecurring: eventIsRecurring,
-      startDate: !eventIsRecurring ? eventStartDate : undefined,
-      endDate: !eventIsRecurring ? eventEndDate : undefined,
-      days: eventIsRecurring ? eventDays : [],
-      enabled: true,
-    };
-
-    if (device) {
-      onUpdateDevice(eventDeviceId, {
-        events: [...(device.events || []), newEvent],
-      });
+    const organizationId =
+      eventOrganizationId ||
+      device?.organizationId ||
+      orgs[0]?.id;
+    if (!organizationId) {
+      showDeviceToast('Organization missing for this device', 'error');
+      return;
     }
 
-    // Always notify DevicesPage local list (API-loaded devices may not be in units)
-    deviceEventListeners.current.forEach((fn) => fn(eventDeviceId, newEvent));
+    try {
+      const saved = await createScheduleEvent({
+        name: eventName.trim(),
+        scope: 'device',
+        organizationId,
+        deviceId: eventDeviceId,
+        venueId: eventVenueId || device?.venueId || null,
+        action: eventOnOffAction,
+        targetTemp:
+          eventOnOffAction === 'ON' ? parseInt(eventTemp, 10) : null,
+        startTime: eventTime,
+        endTime: eventEndTime,
+        days: eventDays,
+        remote: eventOnOffAction === 'OFF' ? 'lock' : eventRemote,
+        timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+      });
 
-    closeAddEventModal();
+      const newEvent = scheduleEventToACEvent(saved);
+
+      if (device) {
+        onUpdateDevice(eventDeviceId, {
+          events: [...(device.events || []), newEvent],
+        });
+      }
+
+      deviceEventListeners.current.forEach((fn) => fn(eventDeviceId, newEvent));
+      showDeviceToast('Event scheduled', 'success');
+      closeAddEventModal();
+    } catch (error: unknown) {
+      const message =
+        (error as { response?: { data?: { message?: string } } })?.response
+          ?.data?.message || 'Failed to create event';
+      showDeviceToast(message, 'error');
+    }
   };
 
   const toggleVenue = (vId: string) => {
@@ -726,10 +756,12 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     energyView, setEnergyView,
     filteredUnits, aggregatedEnergyData, runtimeStats, faultyDevices, handleDownloadReport,
     showAddEventModal, setShowAddEventModal,
-    eventDeviceId, setEventDeviceId, eventName, setEventName, eventTemp, setEventTemp,
-    eventIsRecurring, setEventIsRecurring, eventStartDate, setEventStartDate,
-    eventEndDate, setEventEndDate, eventDays, setEventDays,
-    eventIsOnOff, setEventIsOnOff, eventOnOffAction, setEventOnOffAction, eventTime, setEventTime,
+    eventDeviceId, setEventDeviceId, eventDeviceName, setEventDeviceName,
+    eventOrganizationId, setEventOrganizationId, eventVenueId, setEventVenueId,
+    eventName, setEventName, eventTemp, setEventTemp,
+    eventDays, setEventDays,
+    eventOnOffAction, setEventOnOffAction, eventTime, setEventTime,
+    eventEndTime, setEventEndTime, eventRemote, setEventRemote,
     handleAddUser, toggleUser, toggleVenueRow, openUserDetailModal, closeUserDetailModal,
     closeAddUserModal, handleAddOrg, handleAddVenue, handleAddDevice,
     handleUpdateDevice, handleConfirmDelete,

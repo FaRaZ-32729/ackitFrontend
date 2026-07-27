@@ -75,6 +75,8 @@ export interface ACEvent {
   endDate?: string;
   days: string[];
   enabled: boolean;
+  /** Event remote lock preference */
+  remote?: 'lock' | 'unlock';
 }
 
 export interface EnergyData {

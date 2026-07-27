@@ -2,6 +2,13 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { ACUnit, Role, Organization, Venue, ACEvent } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { getDevicesByVenue, setDevicePower, setDeviceTemperature, setDeviceMode, setDeviceFan } from '../../api/deviceApi';
+import {
+  createScheduleEvent,
+  listScheduleEvents,
+  scheduleEventToACEvent,
+  setScheduleEventEnabled,
+} from '../../api/eventApi';
+import { getAppSocket } from '../../api/brandSocket';
 import { 
   Power, 
   Thermometer, 
@@ -27,7 +34,8 @@ import {
   AlertCircle,
   Bell,
   Zap,
-  MonitorSmartphone
+  MonitorSmartphone,
+  Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
@@ -110,14 +118,18 @@ export function Dashboard({
   // 3. Maintenance List Expansion State
   const [expandedMaintenanceVenueId, setExpandedMaintenanceVenueId] = useState<string | null>(null);
 
-  // 4. State for Schedule Creator Form
+  // 4. State for Schedule Creator Form (matches Device Management Add Event fields)
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [newScheduleName, setNewScheduleName] = useState('');
-  const [newScheduleTime, setNewScheduleTime] = useState('10:30');
-  const [newScheduleEndTime, setNewScheduleEndTime] = useState('04:00');
-  const [newScheduleAction, setNewScheduleAction] = useState<'ON' | 'OFF' | 'SET_TEMP'>('OFF');
-  const [newScheduleTemp, setNewScheduleTemp] = useState(26);
-  const [newScheduleDays, setNewScheduleDays] = useState<string[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+  const [newScheduleTime, setNewScheduleTime] = useState('08:00');
+  const [newScheduleEndTime, setNewScheduleEndTime] = useState('18:00');
+  const [newScheduleAction, setNewScheduleAction] = useState<'ON' | 'OFF'>('ON');
+  const [newScheduleTemp, setNewScheduleTemp] = useState(22);
+  const [newScheduleDays, setNewScheduleDays] = useState<string[]>([]);
+  const [newScheduleRemote, setNewScheduleRemote] = useState<'lock' | 'unlock'>('unlock');
+  /** Org or venue scoped events from API (for EVENTS panel) */
+  const [scopeEvents, setScopeEvents] = useState<ACEvent[]>([]);
+  const [scopeEventsLoading, setScopeEventsLoading] = useState(false);
 
   // Dropdown states for AC Operations and Fan Speed
   const [showModeDropdown, setShowModeDropdown] = useState(false);
@@ -146,7 +158,7 @@ export function Dashboard({
       bulkToastTimer.current = window.setTimeout(() => {
         setBulkToast(null);
         bulkToastTimer.current = null;
-      }, 3500);
+      }, 2500);
     },
     []
   );
@@ -186,6 +198,58 @@ export function Dashboard({
       setGlobalUnitId(null);
     }
   }, [orgVenues, globalVenueId, setGlobalVenueId, setGlobalUnitId]);
+
+  // Load organization or venue events for the EVENTS panel
+  useEffect(() => {
+    let active = true;
+    if (!globalOrgId) {
+      setScopeEvents([]);
+      setScopeEventsLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    setScopeEventsLoading(true);
+    const params =
+      selectedVenueId === 'all'
+        ? { organizationId: globalOrgId, scope: 'organization' as const }
+        : {
+            organizationId: globalOrgId,
+            venueId: selectedVenueId,
+            scope: 'venue' as const,
+          };
+
+    listScheduleEvents(params)
+      .then((events) => {
+        if (!active) return;
+        setScopeEvents(events.map(scheduleEventToACEvent));
+      })
+      .catch(() => {
+        if (!active) return;
+        setScopeEvents([]);
+      })
+      .finally(() => {
+        if (active) setScopeEventsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [globalOrgId, selectedVenueId]);
+
+  // Remove one-time / deleted events from the EVENTS panel live
+  useEffect(() => {
+    const socket = getAppSocket();
+    const onEventDeleted = (payload: { id?: string }) => {
+      if (!payload?.id) return;
+      setScopeEvents((prev) => prev.filter((e) => e.id !== payload.id));
+    };
+    socket.on('event:deleted', onEventDeleted);
+    return () => {
+      socket.off('event:deleted', onEventDeleted);
+    };
+  }, []);
 
   const handleOrgChange = useCallback(
     (orgId: string) => {
@@ -271,19 +335,20 @@ export function Dashboard({
     [orgUnits, sumLivePowerKw]
   );
 
-  // Aggregate stats for selected units
-  const totalUnitsCount = selectedUnits.length;
-  const activeUnitsCount = selectedUnits.filter(u => u.isOn).length;
-  const faultUnitsCount = selectedUnits.filter(u => u.hasFault).length;
-  const totalEnergy = useMemo(() => {
-    return Number(selectedUnits.reduce((acc, u) => {
-      const lastMonthData = u.energyConsumption?.monthly;
-      const kwh = lastMonthData && lastMonthData.length > 0 
-        ? lastMonthData[lastMonthData.length - 1].kwh 
-        : 12;
-      return acc + kwh;
-    }, 0).toFixed(1));
-  }, [selectedUnits]);
+  // Aggregate stats for Active Control Frame (org card = all org devices, venue card = that venue)
+  const frameMetricUnits = useMemo(() => {
+    const orgVenueIds = new Set(orgVenues.map((v) => v.id));
+    const orgScoped = liveUnits.filter((u) => orgVenueIds.has(u.venueId));
+    if (selectedVenueId === 'all') return orgScoped;
+    return orgScoped.filter((u) => u.venueId === selectedVenueId);
+  }, [liveUnits, selectedVenueId, orgVenues]);
+
+  const totalUnitsCount = frameMetricUnits.length;
+  const faultUnitsCount = frameMetricUnits.filter((u) => u.hasFault).length;
+  const framePowerKw = useMemo(
+    () => sumLivePowerKw(frameMetricUnits),
+    [frameMetricUnits, sumLivePowerKw]
+  );
 
   const orgTempScopeKey = `org:${globalOrgId || 'none'}`;
   const frameTempScopeKey = globalUnitId
@@ -735,46 +800,96 @@ export function Dashboard({
     })();
   };
 
-  // Add event/schedule for selected venue
-  const handleAddSchedule = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newScheduleName.trim()) return;
-
-    selectedUnits.forEach(u => {
-      const newEvent: ACEvent = {
-        id: `evt-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        name: newScheduleName,
-        time: newScheduleTime,
-        endTime: newScheduleEndTime || undefined,
-        action: newScheduleAction,
-        targetTemp: newScheduleAction === 'SET_TEMP' ? newScheduleTemp : undefined,
-        isRecurring: true,
-        days: newScheduleDays,
-        enabled: true,
-      };
-
-      const updatedEvents = [...(u.events || []), newEvent];
-      if (onUpdateDevice) {
-        onUpdateDevice(u.id, { events: updatedEvents });
-      }
-    });
-
-    // Reset Form
-    setNewScheduleName('');
+  // Add event/schedule for selected org or venue (all units in Active Control Frame)
+  const closeScheduleForm = () => {
     setShowScheduleForm(false);
+    setNewScheduleName('');
+    setNewScheduleTime('08:00');
+    setNewScheduleEndTime('18:00');
+    setNewScheduleAction('ON');
+    setNewScheduleTemp(22);
+    setNewScheduleDays([]);
+    setNewScheduleRemote('unlock');
+  };
+
+  const scheduleModalTitle = globalUnitId
+    ? 'Add New Device Event'
+    : selectedVenueId === 'all'
+      ? 'Add New Organization Event'
+      : 'Add New Venue Event';
+
+  const scheduleModalSubtitle = globalUnitId
+    ? selectedUnits[0]?.name || 'Selected device'
+    : selectedVenueId === 'all'
+      ? `${activeOrg.name} · All venues · ${totalUnitsCount} unit${totalUnitsCount === 1 ? '' : 's'}`
+      : `${orgVenues.find((v) => v.id === selectedVenueId)?.name || 'Venue'} · ${totalUnitsCount} unit${totalUnitsCount === 1 ? '' : 's'}`;
+
+  const handleAddSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newScheduleName.trim() || !newScheduleTime || !newScheduleEndTime) return;
+    if (!globalOrgId) {
+      showBulkToast('Select an organization first', 'error');
+      return;
+    }
+
+    const scope = globalUnitId
+      ? 'device'
+      : selectedVenueId === 'all'
+        ? 'organization'
+        : 'venue';
+
+    try {
+      const saved = await createScheduleEvent({
+        name: newScheduleName.trim(),
+        scope,
+        organizationId: globalOrgId,
+        venueId:
+          scope === 'venue'
+            ? selectedVenueId
+            : scope === 'device'
+              ? selectedUnits[0]?.venueId || null
+              : null,
+        deviceId: scope === 'device' ? globalUnitId : null,
+        action: newScheduleAction,
+        targetTemp:
+          newScheduleAction === 'ON' ? newScheduleTemp : null,
+        startTime: newScheduleTime,
+        endTime: newScheduleEndTime,
+        days: newScheduleDays,
+        remote:
+          newScheduleAction === 'OFF' ? 'lock' : newScheduleRemote,
+        timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+      });
+
+      const newEvent = scheduleEventToACEvent(saved);
+      if (scope === 'organization' || scope === 'venue') {
+        setScopeEvents((prev) => [newEvent, ...prev]);
+      }
+
+      showBulkToast('Event scheduled', 'info');
+      closeScheduleForm();
+    } catch (error: unknown) {
+      const message =
+        (error as { response?: { data?: { message?: string } } })?.response
+          ?.data?.message || 'Failed to create event';
+      showBulkToast(message, 'error');
+    }
   };
 
   const handleToggleSchedule = (eventId: string, currentEnabled: boolean) => {
-    selectedUnits.forEach(u => {
-      const updatedEvents = (u.events || []).map(evt => {
-        if (evt.id === eventId || evt.name === eventId) {
-          return { ...evt, enabled: !currentEnabled };
-        }
-        return evt;
-      });
-      if (onUpdateDevice) {
-        onUpdateDevice(u.id, { events: updatedEvents });
-      }
+    const nextEnabled = !currentEnabled;
+    setScopeEvents((prev) =>
+      prev.map((evt) =>
+        evt.id === eventId ? { ...evt, enabled: nextEnabled } : evt
+      )
+    );
+    void setScheduleEventEnabled(eventId, nextEnabled).catch(() => {
+      setScopeEvents((prev) =>
+        prev.map((evt) =>
+          evt.id === eventId ? { ...evt, enabled: currentEnabled } : evt
+        )
+      );
+      showBulkToast('Failed to update event', 'error');
     });
   };
 
@@ -787,28 +902,19 @@ export function Dashboard({
     }
   };
 
-  // Aggregated schedules for right panel list (groups schedules by name or time)
+  // Org / venue schedules for Active Control Frame EVENTS list
   const aggregatedEvents = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; time: string; endTime?: string; action: string; temp?: number; days: string[]; enabled: boolean }>();
-    selectedUnits.forEach(u => {
-      (u.events || []).forEach(evt => {
-        const key = `${evt.name}-${evt.time}-${evt.endTime || ''}-${evt.action}-${evt.targetTemp || ''}`;
-        if (!map.has(key)) {
-          map.set(key, {
-            id: evt.id,
-            name: evt.name,
-            time: evt.time,
-            endTime: evt.endTime,
-            action: evt.action,
-            temp: evt.targetTemp,
-            days: evt.days,
-            enabled: evt.enabled,
-          });
-        }
-      });
-    });
-    return Array.from(map.values());
-  }, [selectedUnits]);
+    return scopeEvents.map((evt) => ({
+      id: evt.id,
+      name: evt.name,
+      time: evt.time,
+      endTime: evt.endTime,
+      action: evt.action,
+      temp: evt.targetTemp,
+      days: evt.days,
+      enabled: evt.enabled,
+    }));
+  }, [scopeEvents]);
 
   // Chart data calculation
   const chartData = useMemo(() => {
@@ -860,7 +966,7 @@ export function Dashboard({
 
   // Days Formatter to match image (e.g. Mon Tue ... Sun)
   const formatDays = (days: string[]) => {
-    if (!days || days.length === 0) return 'None';
+    if (!days || days.length === 0) return 'One-time';
     if (days.length === 7) return 'Mon Tue ... Sun';
     if (days.length === 5 && days.includes('Mon') && days.includes('Fri')) return 'Mon Tue ... Fri';
     return days.join(' ');
@@ -1669,7 +1775,7 @@ export function Dashboard({
                   <Zap className="w-4 h-4" />
                 </div>
                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block text-center">Energy</span>
-                <span className="text-xs font-black text-amber-700 mt-0.5">{totalEnergy} kW</span>
+                <span className="text-xs font-black text-amber-700 mt-0.5">{framePowerKw.toFixed(2)} kW</span>
               </div>
 
               {/* Faults Card */}
@@ -1993,8 +2099,13 @@ export function Dashboard({
               ) : (
                 <div className="text-center py-8 w-full border border-dashed border-slate-100 rounded-[28px] bg-slate-50/20 flex flex-col items-center justify-center">
                   <Calendar className="w-6 h-6 text-slate-300 mb-1.5" />
-                  <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">No active schedules found</p>
-                  <p className="text-[9px] text-slate-400 mt-0.5">Click the "+" button to schedule a venue event</p>
+                  <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
+                    {scopeEventsLoading ? 'Loading schedules…' : 'No active schedules found'}
+                  </p>
+                  <p className="text-[9px] text-slate-400 mt-0.5">
+                    Click the "+" button to schedule an{' '}
+                    {selectedVenueId === 'all' ? 'organization' : 'venue'} event
+                  </p>
                 </div>
               )}
             </div>
@@ -2049,7 +2160,7 @@ export function Dashboard({
                 <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">ENERGY</span>
                 <div className="flex items-center gap-1 mt-2">
                   <Zap className="w-4 h-4 text-amber-500 fill-amber-500 shrink-0" />
-                  <span className="text-xs font-black text-slate-800 tracking-tight">{totalEnergy} <span className="text-[8px] font-bold text-slate-400">kW</span></span>
+                  <span className="text-xs font-black text-slate-800 tracking-tight">{framePowerKw.toFixed(2)} <span className="text-[8px] font-bold text-slate-400">kW</span></span>
                 </div>
               </div>
 
@@ -2356,115 +2467,178 @@ export function Dashboard({
         );
       })()}
 
-      {/* Schedule modal — rendered at root so it works on mobile + desktop
-          (desktop branch is display:none on small screens, which hid the old modal) */}
+      {/* Schedule modal — same fields as Device Management Add Event */}
       <Modal
         isOpen={showScheduleForm}
-        onClose={() => setShowScheduleForm(false)}
-        title="Add New Venue Schedule"
-        subtitle={`For ${selectedVenueId === 'all' ? `All ${activeOrg.name} Venues` : orgVenues.find(v => v.id === selectedVenueId)?.name || 'Selected Venue'} · ${totalUnitsCount} unit${totalUnitsCount === 1 ? '' : 's'}`}
+        onClose={closeScheduleForm}
+        title={scheduleModalTitle}
+        subtitle={scheduleModalSubtitle}
       >
-        <form onSubmit={handleAddSchedule} className="space-y-4 sm:space-y-5">
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Event Name</label>
+        <form onSubmit={handleAddSchedule} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Event Name</label>
             <input
               type="text"
               value={newScheduleName}
               onChange={(e) => setNewScheduleName(e.target.value)}
-              placeholder="e.g. Eco Night"
-              className="w-full px-3.5 py-3 sm:py-2.5 border border-slate-200 rounded-xl text-sm sm:text-xs font-semibold focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white"
+              placeholder="e.g., Morning Start"
+              className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               required
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5 min-w-0">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Start Time</label>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Event Type</label>
+            <div className="flex p-1 bg-slate-100 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setNewScheduleAction('ON')}
+                className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  newScheduleAction === 'ON'
+                    ? 'bg-white text-emerald-700 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                On
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setNewScheduleAction('OFF');
+                  setNewScheduleRemote('lock');
+                }}
+                className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  newScheduleAction === 'OFF'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Off
+              </button>
+            </div>
+          </div>
+
+          {newScheduleAction === 'ON' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Target Temperature (°C)</label>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min="16"
+                  max="30"
+                  value={newScheduleTemp}
+                  onChange={(e) => setNewScheduleTemp(Number(e.target.value))}
+                  className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <span className="text-sm font-bold text-slate-800 w-10 tabular-nums">{newScheduleTemp}°</span>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
               <input
                 type="time"
                 value={newScheduleTime}
                 onChange={(e) => setNewScheduleTime(e.target.value)}
-                className="w-full min-w-0 px-3 py-3 sm:py-2.5 border border-slate-200 rounded-xl text-sm sm:text-xs font-semibold focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white"
+                className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 required
               />
             </div>
-            <div className="space-y-1.5 min-w-0">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">End Time</label>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">End Time</label>
               <input
                 type="time"
                 value={newScheduleEndTime}
                 onChange={(e) => setNewScheduleEndTime(e.target.value)}
-                className="w-full min-w-0 px-3 py-3 sm:py-2.5 border border-slate-200 rounded-xl text-sm sm:text-xs font-semibold focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white"
+                className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 required
               />
             </div>
           </div>
 
-          <div className={`grid gap-3 ${newScheduleAction === 'SET_TEMP' ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            <div className="space-y-1.5 min-w-0">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Action / Command</label>
-              <CustomDropdown
-                value={newScheduleAction}
-                onChange={(v) => setNewScheduleAction(v as 'ON' | 'OFF' | 'SET_TEMP')}
-                options={[
-                  { value: 'ON', label: 'Power ON' },
-                  { value: 'OFF', label: 'Power OFF' },
-                  { value: 'SET_TEMP', label: 'Set Temp' },
-                ]}
-                placement="down"
-              />
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Days{' '}
+              <span className="text-slate-400 font-normal">
+                (optional — empty = one-time)
+              </span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { value: 'Mon', label: 'Monday' },
+                { value: 'Tue', label: 'Tuesday' },
+                { value: 'Wed', label: 'Wednesday' },
+                { value: 'Thu', label: 'Thursday' },
+                { value: 'Fri', label: 'Friday' },
+                { value: 'Sat', label: 'Saturday' },
+                { value: 'Sun', label: 'Sunday' },
+              ].map((day) => (
+                <button
+                  key={day.value}
+                  type="button"
+                  onClick={() => toggleDay(day.value)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    newScheduleDays.includes(day.value)
+                      ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                      : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                  title={day.label}
+                >
+                  {day.value}
+                </button>
+              ))}
             </div>
-            {newScheduleAction === 'SET_TEMP' && (
-              <div className="space-y-1.5 min-w-0">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Target Temp (°C)</label>
-                <input
-                  type="number"
-                  min="16"
-                  max="31"
-                  value={newScheduleTemp}
-                  onChange={(e) => setNewScheduleTemp(Number(e.target.value))}
-                  className="w-full px-3.5 py-3 sm:py-2.5 border border-slate-200 rounded-xl text-sm sm:text-xs font-semibold focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white"
-                />
-              </div>
+            {newScheduleDays.length === 0 && (
+              <p className="text-[10px] text-slate-400 mt-1.5 font-medium">
+                One-time: runs once at the next start/end, then is deleted.
+              </p>
             )}
           </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">Active Days</label>
-            <div className="flex gap-1.5 sm:gap-2">
-              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
-                const isActive = newScheduleDays.includes(day);
-                return (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => toggleDay(day)}
-                    className={`flex-1 min-w-0 h-11 sm:h-10 rounded-xl text-[11px] sm:text-[10px] font-black uppercase transition-all active:scale-95 ${
-                      isActive
-                        ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/20'
-                        : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                    }`}
-                  >
-                    {day.slice(0, 1)}
-                  </button>
-                );
-              })}
+          {newScheduleAction === 'ON' ? (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Remote Lock</label>
+              <CustomDropdown
+                value={newScheduleRemote}
+                onChange={(v) => setNewScheduleRemote(v as 'lock' | 'unlock')}
+                options={[
+                  { value: 'unlock', label: 'Unlock' },
+                  { value: 'lock', label: 'Lock' },
+                ]}
+                placement="up"
+              />
             </div>
-          </div>
+          ) : (
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-100">
+              <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 leading-relaxed">
+                Off events always use <span className="font-bold">remote lock</span>.
+                No one can change the AC with the physical remote while this event is active.
+              </p>
+            </div>
+          )}
 
-          <div className="pt-1 sm:pt-2 flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3 sticky bottom-0 bg-white pb-1">
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 mt-2">
             <button
               type="button"
-              onClick={() => setShowScheduleForm(false)}
-              className="flex-1 py-3.5 sm:py-2.5 border border-slate-200 text-slate-500 text-xs font-black uppercase tracking-wider rounded-xl hover:bg-slate-50 transition-all cursor-pointer active:scale-[0.99]"
+              onClick={closeScheduleForm}
+              className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 py-3.5 sm:py-2.5 bg-blue-600 text-white text-xs font-black uppercase tracking-wider rounded-xl hover:bg-blue-700 transition-all shadow-sm shadow-blue-600/15 cursor-pointer active:scale-[0.99]"
+              disabled={
+                !newScheduleName.trim() ||
+                !newScheduleTime ||
+                !newScheduleEndTime ||
+                selectedUnits.length === 0
+              }
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Save Event
+              Add Event
             </button>
           </div>
         </form>
