@@ -4,6 +4,7 @@ import {
   UserWorkspaceProps,
   useUserWorkspace,
 } from './context/UserWorkspaceContext';
+import { UserDeviceModals } from './components/UserDeviceModals';
 
 function UserLayoutInner({ children }: { children: React.ReactNode }) {
   const { activeTab } = useUserWorkspace();
@@ -11,14 +12,15 @@ function UserLayoutInner({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={`w-full ${
-        activeTab === 'devices'
-          ? 'max-w-6xl mx-auto px-2 md:px-4 h-full flex flex-col overflow-hidden py-1 space-y-3'
-          : activeTab === 'dashboard' || activeTab === 'reports'
-            ? 'max-w-none h-full flex flex-col overflow-hidden px-0 py-0 space-y-0'
-            : 'max-w-6xl mx-auto px-2 md:px-4 py-6 md:py-8 space-y-8'
+        activeTab === 'devices' ||
+        activeTab === 'dashboard' ||
+        activeTab === 'reports'
+          ? 'max-w-none h-full flex flex-col overflow-hidden px-0 py-0 space-y-0'
+          : 'max-w-6xl mx-auto px-2 md:px-4 py-6 md:py-8 space-y-8'
       }`}
     >
       {children}
+      <UserDeviceModals />
     </div>
   );
 }

@@ -17,7 +17,6 @@ import {
   Users, 
   Activity, 
   ShieldAlert,
-  BarChart3,
   LayoutDashboard
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -131,9 +130,6 @@ export function ConsoleLayout() {
   };
 
   const isTabActive = (tabId: string) => {
-    if (tabId === 'dashboard') {
-      return activeTab === 'dashboard' || activeTab === 'overview';
-    }
     return activeTab === tabId;
   };
 
@@ -211,14 +207,14 @@ export function ConsoleLayout() {
                           <button
                             onClick={() => {
                               setShowProfileMenu(false);
-                              handleTabClick('overview');
+                              handleTabClick('dashboard');
                             }}
                             className={`w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-600 font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-colors cursor-pointer ${
-                              activeTab === 'overview' ? 'bg-blue-50/50 text-blue-600' : ''
+                              activeTab === 'dashboard' ? 'bg-blue-50/50 text-blue-600' : ''
                             }`}
                           >
-                            <BarChart3 className="w-4 h-4" />
-                            Overview
+                            <LayoutDashboard className="w-4 h-4" />
+                            Dashboard
                           </button>
 
                           <button

@@ -36,9 +36,9 @@ export function LoginPage() {
       if (user.role === 'admin') {
         navigate('/admin');
       } else if (user.role === 'manager') {
-        navigate(user.currentSubscription ? '/manager' : '/subscribe');
+        navigate(user.currentSubscription ? '/manager/dashboard' : '/subscribe');
       } else {
-        navigate('/user');
+        navigate('/user/dashboard');
       }
     } catch (err) {
       let message = 'Login failed. Please try again.';

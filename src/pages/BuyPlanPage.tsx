@@ -75,7 +75,7 @@ export function BuyPlanPage() {
   }
 
   if (hasActiveSubscription) {
-    return <Navigate to="/manager" replace />;
+    return <Navigate to="/manager/dashboard" replace />;
   }
 
   const handlePurchase = async (planId: string) => {
@@ -85,7 +85,7 @@ export function BuyPlanPage() {
     try {
       await purchasePlan(planId);
       setSuccess('Plan activated successfully. Opening dashboard...');
-      navigate('/manager', { replace: true });
+      navigate('/manager/dashboard', { replace: true });
     } catch (err) {
       let message = 'Failed to activate plan. Please try again.';
       if (axios.isAxiosError(err)) {

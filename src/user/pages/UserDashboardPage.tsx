@@ -13,9 +13,10 @@ export function UserDashboardPage() {
     onTogglePower,
     onUpdateDevice,
     setSelectedDeviceVenueId,
-    resetForm,
+    setShowAddDevice,
     assignedVenues,
     assignedUnits,
+    canManage,
   } = useUserWorkspace();
 
   useEffect(() => {
@@ -32,8 +33,9 @@ export function UserDashboardPage() {
         orgs={orgs}
         venues={assignedVenues}
         onAddDeviceClick={() => {
+          if (!canManage) return;
           if (onTabChange) onTabChange('devices');
-          resetForm();
+          setShowAddDevice(true);
         }}
         onUpdateDevice={onUpdateDevice}
         onViewDevicesOfVenue={(venueId) => {

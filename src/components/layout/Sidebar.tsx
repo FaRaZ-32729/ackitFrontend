@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, CreditCard, LayoutDashboard, Activity, Building2, LogOut, Settings, BarChart3, MapPin, MonitorSmartphone, X, Cpu } from 'lucide-react';
+import { Users, CreditCard, LayoutDashboard, Activity, Building2, LogOut, MapPin, MonitorSmartphone, X, Cpu } from 'lucide-react';
 import { Role } from '../../types';
 import { ACKitLogo } from '../ui/ACKitLogo';
 
@@ -20,7 +20,6 @@ export function Sidebar({ role, activeTab, onTabChange, onLogout, isOpen, onClos
   ];
 
   const managerTabs = [
-    { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'reports', label: 'Reports', icon: Activity },
     { id: 'users', label: 'User Management', icon: Users },

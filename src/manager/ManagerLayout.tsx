@@ -13,7 +13,6 @@ function ManagerLayoutInner({ children }: { children: React.ReactNode }) {
     <div
       className={`w-full ${
         activeTab === 'dashboard' ||
-        activeTab === 'overview' ||
         activeTab === 'organizations' ||
         activeTab === 'venues' ||
         activeTab === 'users' ||

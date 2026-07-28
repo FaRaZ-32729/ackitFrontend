@@ -685,10 +685,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (role === 'admin') setActiveTab('managers');
-    else if (role === 'manager') {
-      const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
-      setActiveTab(isMobile ? 'dashboard' : 'overview');
-    }
+    else if (role === 'manager') setActiveTab('dashboard');
     else if (role === 'user') setActiveTab('dashboard');
   }, [role]);
 

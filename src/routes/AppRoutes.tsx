@@ -24,7 +24,7 @@ function HomeRedirect() {
   if (role === 'manager' && !hasActiveSubscription) {
     return <Navigate to="/subscribe" replace />;
   }
-  return <Navigate to={`/${role}`} replace />;
+  return <Navigate to={role === 'manager' ? '/manager/dashboard' : `/${role}`} replace />;
 }
 
 /**

@@ -2,7 +2,6 @@ import React from 'react';
 import { Navigate, useParams, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/AppContext';
 import { ManagerLayout } from '../ManagerLayout';
-import { OverviewPage } from './OverviewPage';
 import { DashboardPage } from './DashboardPage';
 import { ReportsPage } from './ReportsPage';
 import { UsersPage } from './UsersPage';
@@ -11,7 +10,6 @@ import { VenuesPage } from './VenuesPage';
 import { DevicesPage } from './DevicesPage';
 
 const VALID_TABS = [
-  'overview',
   'dashboard',
   'reports',
   'users',
@@ -24,8 +22,6 @@ type ManagerTab = (typeof VALID_TABS)[number];
 
 function ManagerTabContent({ tab }: { tab: ManagerTab }) {
   switch (tab) {
-    case 'overview':
-      return <OverviewPage />;
     case 'dashboard':
       return <DashboardPage />;
     case 'reports':
@@ -81,11 +77,13 @@ export function ManagerPage() {
     return <Navigate to="/subscribe" replace />;
   }
 
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
-  const defaultTab = isMobile ? 'dashboard' : 'overview';
+  // Legacy bookmarks for removed Overview → Dashboard
+  if (tab === 'overview') {
+    return <Navigate to="/manager/dashboard" replace />;
+  }
 
-  if (!tab || !(VALID_TABS as readonly string[]).includes(tab) || (tab === 'overview' && isMobile)) {
-    return <Navigate to={`/manager/${defaultTab}`} replace />;
+  if (!tab || !(VALID_TABS as readonly string[]).includes(tab)) {
+    return <Navigate to="/manager/dashboard" replace />;
   }
 
   const currentTab = tab as ManagerTab;
