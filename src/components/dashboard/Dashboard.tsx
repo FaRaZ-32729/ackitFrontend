@@ -1042,28 +1042,27 @@ export function Dashboard({
     }));
   }, [scopeEvents]);
 
-  // Chart data calculation
+  // Chart data: per-venue online/offline device counts + live power sum + faults
   const chartData = useMemo(() => {
-    return orgVenues.map(v => {
-      const venueUnits = liveUnits.filter(u => u.venueId === v.id);
-      
-      // Calculate Hours
-      const activeCount = venueUnits.filter(u => u.isOn).length;
-      const hoursValue = activeCount * 8 + Math.round(Math.random() * 4); // mocked hours
+    return orgVenues.map((v) => {
+      const venueUnits = liveUnits.filter((u) => u.venueId === v.id);
 
-      // Calculate Energy
-      const energySum = venueUnits.reduce((acc, u) => {
-        const lastMonthData = u.energyConsumption?.monthly;
-        return acc + (lastMonthData && lastMonthData.length > 0 ? lastMonthData[lastMonthData.length - 1].kwh : 12);
-      }, 0);
+      const onlineCount = venueUnits.filter((u) => u.status !== 'offline').length;
+      const offlineCount = venueUnits.filter((u) => u.status === 'offline').length;
 
-      // Calculate Faults
-      const faultsValue = venueUnits.filter(u => u.hasFault).length;
+      // Live power (kW) sum for all devices in this venue
+      const powerSum = venueUnits.reduce(
+        (acc, u) => acc + (Number(u.powerConsumption) || 0),
+        0
+      );
+
+      const faultsValue = venueUnits.filter((u) => u.hasFault).length;
 
       return {
         name: v.name.replace('SSUET_', ''),
-        'No.of Hours': hoursValue,
-        'Energy (kWh)': Math.round(energySum),
+        Online: onlineCount,
+        Offline: offlineCount,
+        'Energy (kWh)': Number(powerSum.toFixed(2)),
         'Need maintenance': faultsValue,
       };
     });
@@ -1776,7 +1775,7 @@ export function Dashboard({
                           : 'text-slate-500 hover:text-slate-850'
                       }`}
                     >
-                      {tab === 'hours' ? 'No.of Hours' : tab === 'energy' ? 'Energy' : 'Need Maintenance'}
+                      {tab === 'hours' ? 'Online / Offline' : tab === 'energy' ? 'Energy' : 'Need Maintenance'}
                     </button>
                   ))}
                 </div>
@@ -1803,17 +1802,30 @@ export function Dashboard({
                       contentStyle={{ background: '#FFFFFF', borderRadius: '16px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                       labelStyle={{ fontWeight: 'black', fontSize: '11px', color: '#0F172A' }}
                     />
-                    <Bar 
-                      dataKey={activeChartTab === 'hours' ? 'No.of Hours' : activeChartTab === 'energy' ? 'Energy (kWh)' : 'Need maintenance'} 
-                      radius={[6, 6, 0, 0]}
-                    >
-                      {chartData.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={activeChartTab === 'hours' ? '#2563EB' : activeChartTab === 'energy' ? '#F59E0B' : '#EF4444'} 
-                        />
-                      ))}
-                    </Bar>
+                    {activeChartTab === 'hours' ? (
+                      <>
+                        <Bar dataKey="Online" radius={[6, 6, 0, 0]} fill="#2563EB" />
+                        <Bar dataKey="Offline" radius={[6, 6, 0, 0]} fill="#94A3B8" />
+                      </>
+                    ) : (
+                      <Bar
+                        dataKey={
+                          activeChartTab === 'energy'
+                            ? 'Energy (kWh)'
+                            : 'Need maintenance'
+                        }
+                        radius={[6, 6, 0, 0]}
+                      >
+                        {chartData.map((_, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={
+                              activeChartTab === 'energy' ? '#F59E0B' : '#EF4444'
+                            }
+                          />
+                        ))}
+                      </Bar>
+                    )}
                   </BarChart>
                 </ResponsiveContainer>
               </div>

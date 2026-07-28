@@ -119,6 +119,15 @@ export async function getDevicesByVenue(venueId: string): Promise<ACUnit[]> {
   return (data.devices || []).map(mapApiDevice);
 }
 
+export async function getDeviceById(id: string): Promise<ACUnit> {
+  const { data } = await api.get<{
+    success: boolean;
+    device: ApiDevice;
+  }>(`/api/device/${id}`);
+
+  return mapApiDevice(data.device);
+}
+
 export async function createDevice(payload: {
   name: string;
   organization: string;
