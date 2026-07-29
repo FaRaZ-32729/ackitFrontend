@@ -1,7 +1,6 @@
 import React from 'react';
 import { Users, CreditCard, LayoutDashboard, Activity, Building2, LogOut, MapPin, MonitorSmartphone, X, Cpu } from 'lucide-react';
 import { Role } from '../../types';
-import { ACKitLogo } from '../ui/ACKitLogo';
 
 interface SidebarProps {
   role: Role;
@@ -51,7 +50,11 @@ export function Sidebar({ role, activeTab, onTabChange, onLogout, isOpen, onClos
       >
         <div className="p-4 flex items-center justify-center border-b border-slate-200 h-16 shrink-0 relative">
           <div className="flex items-center justify-center">
-            <ACKitLogo variant="icon" size="sm" />
+            <img
+              src="/halfLogo.png"
+              alt="Ackit"
+              className="h-8 w-auto max-w-full object-contain"
+            />
           </div>
           {isOpen && (
             <button 

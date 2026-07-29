@@ -14,7 +14,6 @@ const map = {
   'components/Modal': 'components/ui/Modal',
   'components/CustomDropdown': 'components/ui/CustomDropdown',
   'components/MultiSelectDropdown': 'components/ui/MultiSelectDropdown',
-  'components/ACKitLogo': 'components/ui/ACKitLogo',
   'components/ConsoleLayout': 'components/layout/ConsoleLayout',
   'components/Sidebar': 'components/layout/Sidebar',
   'components/AddOrgOverlayPage': 'components/overlays/AddOrgOverlayPage',

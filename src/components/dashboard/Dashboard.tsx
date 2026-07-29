@@ -45,7 +45,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Modal } from '../ui/Modal';
 import { EventOverrideModal } from '../ui/EventOverrideModal';
-import { ACKitLogo } from '../ui/ACKitLogo';
 import { CustomDropdown } from '../ui/CustomDropdown';
 
 const TEMP_MIN = 16;

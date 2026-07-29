@@ -13,7 +13,6 @@ const fixes = [
       ["from './AddVenueOverlayPage'", "from '../overlays/AddVenueOverlayPage'"],
       ["from './AddDeviceOverlayPage'", "from '../overlays/AddDeviceOverlayPage'"],
       ["from './AddUserOverlayPage'", "from '../overlays/AddUserOverlayPage'"],
-      ["from './ACKitLogo'", "from '../ui/ACKitLogo'"],
       ["from '../context/AppContext'", "from '../../context/AppContext'"],
     ],
   },
@@ -21,14 +20,12 @@ const fixes = [
     file: 'src/components/layout/Sidebar.tsx',
     replacements: [
       ["from '../types'", "from '../../types'"],
-      ["from './ACKitLogo'", "from '../ui/ACKitLogo'"],
     ],
   },
   {
     file: 'src/components/auth/Login.tsx',
     replacements: [
       ["from '../types'", "from '../../types'"],
-      ["from './ACKitLogo'", "from '../ui/ACKitLogo'"],
     ],
   },
   {
@@ -37,7 +34,6 @@ const fixes = [
       ["from '../types'", "from '../../types'"],
       ["from '../context/AppContext'", "from '../../context/AppContext'"],
       ["from './Modal'", "from '../ui/Modal'"],
-      ["from './ACKitLogo'", "from '../ui/ACKitLogo'"],
       ["from './CustomDropdown'", "from '../ui/CustomDropdown'"],
     ],
   },
@@ -97,7 +93,7 @@ const fixes = [
 ];
 
 // Also fix ui components that import from ../types or ../index.css paths
-for (const name of ['Modal.tsx', 'CustomDropdown.tsx', 'MultiSelectDropdown.tsx', 'ACKitLogo.tsx']) {
+for (const name of ['Modal.tsx', 'CustomDropdown.tsx', 'MultiSelectDropdown.tsx']) {
   const file = `src/components/ui/${name}`;
   if (!fs.existsSync(file)) continue;
   fixes.push({

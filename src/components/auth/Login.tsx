@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Role } from '../../types';
 import { Shield, Users, User, Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, CheckCircle2 } from 'lucide-react';
-import { ACKitLogo } from '../ui/ACKitLogo';
 
 interface LoginProps {
   onLogin: (role: Role) => void;
@@ -97,7 +96,11 @@ export function Login({ onLogin }: LoginProps) {
       <div className="max-w-md w-full bg-white rounded-3xl shadow-sm border border-slate-100 p-8 transition-all">
         {/* Brand Header */}
         <div className="flex flex-col items-center justify-center mb-6">
-          <ACKitLogo variant="full" size="md" />
+          <img
+            src="/logo.png"
+            alt="Ackit"
+            className="h-11 w-auto object-contain"
+          />
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1.5 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-100">
             IOTIFY ADMIN CONSOLE
           </span>

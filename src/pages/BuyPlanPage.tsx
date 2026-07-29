@@ -11,7 +11,6 @@ import {
   Shield,
 } from 'lucide-react';
 import axios from 'axios';
-import { ACKitLogo } from '../components/ui/ACKitLogo';
 import { useAppContext } from '../context/AppContext';
 import { getPurchasablePlans } from '../api/planApi';
 import type { SubscriptionPlan } from '../types';
@@ -105,7 +104,11 @@ export function BuyPlanPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <header className="bg-white border-b border-slate-100 px-4 sm:px-8 py-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <ACKitLogo variant="full" size="sm" />
+          <img
+            src="/logo.png"
+            alt="Ackit"
+            className="h-8 w-auto object-contain shrink-0"
+          />
           <span className="hidden sm:inline text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-100">
             Choose your plan
           </span>

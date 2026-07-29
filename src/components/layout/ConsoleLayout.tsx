@@ -6,7 +6,6 @@ import { AddOrgOverlayPage } from '../overlays/AddOrgOverlayPage';
 import { AddVenueOverlayPage } from '../overlays/AddVenueOverlayPage';
 import { AddDeviceOverlayPage } from '../overlays/AddDeviceOverlayPage';
 import { AddUserOverlayPage } from '../overlays/AddUserOverlayPage';
-import { ACKitLogo } from '../ui/ACKitLogo';
 import { 
   Menu, 
   User, 
@@ -21,40 +20,6 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAppContext } from '../../context/AppContext';
-
-export function IotfiyLogo({ small }: { small?: boolean }) {
-  return (
-    <div className="flex items-center gap-1.5 select-none">
-      <svg className={`${small ? 'w-6 h-6' : 'w-8 h-8'} shrink-0`} viewBox="0 0 130 110" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {/* Left C-Cloud contour */}
-        <path 
-          d="M38 85 C18 85 5 72 5 54 C5 36 18 23 38 23 C44 23 49 24.5 53 27" 
-          stroke="#06b6d4" 
-          strokeWidth="8" 
-          strokeLinecap="round" 
-          fill="none" 
-        />
-        {/* Top Main Cloud Arch */}
-        <path 
-          d="M30 25 C30 12 48 2 68 2 C88 2 102 16 102 34 C102 37 101.5 40 101 43" 
-          stroke="#3b82f6" 
-          strokeWidth="9" 
-          strokeLinecap="round" 
-          fill="none" 
-        />
-        {/* Integrated Green AC Power Cord Plug */}
-        <rect x="35" y="55" width="24" height="15" rx="3" fill="#10b981" />
-        <line x1="41" y1="70" x2="41" y2="82" stroke="#10b981" strokeWidth="4" strokeLinecap="round" />
-        <line x1="53" y1="70" x2="53" y2="82" stroke="#10b981" strokeWidth="4" strokeLinecap="round" />
-        <path d="M47 55 C47 48 55 48 55 55" stroke="#10b981" strokeWidth="3" strokeLinecap="round" fill="none" />
-      </svg>
-      <span className={`${small ? 'text-lg' : 'text-xl'} font-black tracking-tighter flex`}>
-        <span className="text-sky-500">IoT</span>
-        <span className="text-blue-900">FIY</span>
-      </span>
-    </div>
-  );
-}
 
 export function ConsoleLayout() {
   const { 
@@ -157,10 +122,14 @@ export function ConsoleLayout() {
       {/* Main Container */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden h-full pb-[calc(3.25rem+0.75rem)] lg:pb-0">
         
-        {/* Mobile Header (Figma styled: Left IoTFIY Logo, Right Blue Hamburger Menu/Profile capsule pill) */}
+        {/* Mobile Header */}
         {role !== 'admin' && (
           <header className="lg:hidden h-12 bg-white border-b border-slate-100 flex items-center justify-between px-4 shrink-0 z-40 shadow-sm relative">
-            <IotfiyLogo small />
+            <img
+              src="/logo.png"
+              alt="Ackit"
+              className="h-8 w-auto object-contain"
+            />
             
             <div className="flex items-center gap-2 bg-blue-600 text-white rounded-full px-2.5 py-1 shadow-md hover:bg-blue-700 transition-colors">
               <Menu 

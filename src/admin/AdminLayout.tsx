@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Users, Building2, MapPin, MonitorSmartphone, CreditCard, Cpu, ChevronDown,
-  Activity, Menu, Bell, LogOut, ChevronRight, Sliders,
+  Menu, Bell, LogOut, ChevronRight, Sliders,
 } from 'lucide-react';
 import {
   AdminWorkspaceProvider,
@@ -38,13 +38,11 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     <div className="flex flex-col h-full bg-white text-slate-700">
       {/* Header / Brand */}
       <div className="p-6 border-b border-slate-100 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/25">
-          <Activity className="w-5 h-5" />
-        </div>
-        <div>
-          <h4 className="text-sm font-black text-slate-800 tracking-wider">IOTIFY</h4>
-          <span className="text-[9px] font-bold text-slate-400 block tracking-widest uppercase">ADMIN CONSOLE</span>
-        </div>
+        <img
+          src="/logo.png"
+          alt="Ackit"
+          className="h-9 w-auto object-contain shrink-0"
+        />
       </div>
 
       {/* Menu Sections */}
@@ -146,11 +144,10 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
       <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
-            SA
+            A
           </div>
           <div className="min-w-0">
-            <h5 className="text-xs font-bold text-slate-800 truncate">Super Admin</h5>
-            <span className="text-[10px] font-medium text-slate-400 block truncate">admin@iotify.io</span>
+            <h5 className="text-xs font-bold text-slate-800 truncate">Admin Panel</h5>
           </div>
         </div>
         {onLogout && (
@@ -232,14 +229,14 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* <div className="flex items-center gap-3">
             <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-xl transition-all relative">
               <Bell className="w-4 h-4" />
               <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-indigo-600 rounded-full" />
             </button>
             <div className="w-px h-5 bg-slate-100 mx-1" />
             <span className="text-xs font-bold text-slate-400">v1.2.0</span>
-          </div>
+          </div> */}
         </header>
 
         {/* Dynamic Content — brand page scrolls inside its own cards */}

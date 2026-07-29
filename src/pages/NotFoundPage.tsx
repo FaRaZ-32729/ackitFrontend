@@ -1,7 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Home, ArrowLeft, ShieldAlert } from 'lucide-react';
-import { ACKitLogo } from '../components/ui/ACKitLogo';
 
 export function NotFoundPage() {
   return (
@@ -9,7 +8,11 @@ export function NotFoundPage() {
       <div className="max-w-md w-full bg-white rounded-3xl shadow-sm border border-slate-100 p-8 flex flex-col items-center">
         {/* Brand Header */}
         <div className="mb-8">
-          <ACKitLogo variant="full" size="md" />
+          <img
+            src="/logo.png"
+            alt="Ackit"
+            className="h-11 w-auto object-contain"
+          />
         </div>
 
         {/* 404 Visual Icon */}
@@ -28,15 +31,14 @@ export function NotFoundPage() {
         <div className="grid grid-cols-1 gap-3 w-full mt-8">
           <Link
             to="/"
-            className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-wider text-xs py-3 rounded-xl transition-all shadow-md shadow-indigo-600/15 cursor-pointer"
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm shadow-indigo-600/20 flex items-center justify-center gap-2"
           >
             <Home className="w-4 h-4" />
             <span>Go to Home</span>
           </Link>
-          
           <Link
             to="/login"
-            className="flex items-center justify-center gap-2 border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs py-3 rounded-xl transition-all cursor-pointer"
+            className="w-full py-3 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Back to Login</span>

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
-import { ACKitLogo } from '../components/ui/ACKitLogo';
 import { useAppContext } from '../context/AppContext';
 import axios from 'axios';
 
@@ -58,10 +57,11 @@ export function LoginPage() {
       <div className="max-w-md w-full bg-white rounded-3xl shadow-sm border border-slate-100 p-8 transition-all">
         {/* Brand Header */}
         <div className="flex flex-col items-center justify-center mb-6">
-          <ACKitLogo variant="full" size="md" />
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1.5 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-100">
-            IOTIFY ADMIN CONSOLE
-          </span>
+          <img
+            src="/logo.png"
+            alt="Ackit"
+            className="h-11 w-auto object-contain"
+          />
         </div>
 
         {/* Title */}
@@ -92,7 +92,7 @@ export function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">
-              Email Address
+              Email
             </label>
             <div className="relative">
               <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertCircle, ArrowRight, CheckCircle2, KeyRound, Loader2, Mail } from 'lucide-react';
 import axios from 'axios';
-import { ACKitLogo } from '../components/ui/ACKitLogo';
 import { resendOtp, verifyOtp } from '../api/authApi';
 
 function getErrorMessage(err: unknown, fallback: string) {
@@ -101,7 +100,11 @@ export function VerifyOtpPage() {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-sm border border-slate-100 p-8 transition-all">
         <div className="flex flex-col items-center justify-center mb-6">
-          <ACKitLogo variant="full" size="md" />
+          <img
+            src="/logo.png"
+            alt="Ackit"
+            className="h-11 w-auto object-contain"
+          />
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1.5 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-100">
             ACCOUNT VERIFICATION
           </span>
