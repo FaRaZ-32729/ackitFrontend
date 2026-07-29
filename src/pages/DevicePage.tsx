@@ -7,7 +7,7 @@ import type { ACUnit } from '../types';
 import { RefreshCw } from 'lucide-react';
 
 export function DevicePage() {
-  const { role, user, units, setUnits } = useAppContext();
+  const { role, units, setUnits } = useAppContext();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -16,9 +16,7 @@ export function DevicePage() {
   const [error, setError] = useState<string | null>(null);
 
   const canManage =
-    role === 'manager' ||
-    role === 'admin' ||
-    (role === 'user' && user?.permission === 'manage');
+    role === 'manager' || role === 'admin' || role === 'user';
 
   const loadDevice = useCallback(async () => {
     if (!id) {

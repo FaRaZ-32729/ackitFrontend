@@ -16,6 +16,7 @@ import {
   type DeviceEnergyRow,
   type EnergyPeriod,
 } from '../../api/energyApi';
+import type { Organization, Venue } from '../../types';
 
 type PeriodView = EnergyPeriod;
 
@@ -44,15 +45,46 @@ function escapeCsv(value: string | number): string {
  *  3) GET /api/device/energy?deviceIds=&period= → units (energyConsumptionCalc) + power
  *  4) Table shows Device / Org / Venue / Units / Power for the active period tab
  *  5) Download CSV exports exactly that visible table
+ *
+ * Optional `orgs` / `venues` props scope filters (sub-users: assigned only).
  */
-export function Reports() {
+export function Reports({
+  orgs: orgsProp,
+  venues: venuesProp,
+}: {
+  orgs?: Organization[];
+  venues?: Venue[];
+} = {}) {
   const {
-    orgs,
-    venues,
+    orgs: contextOrgs,
+    venues: contextVenues,
     fetchMyVenues,
     venuesLoading,
     authLoading,
+    role,
+    user,
   } = useAppContext();
+
+  // Sub-users: only assigned organizations / venues (from props or auth user)
+  const orgs = useMemo(() => {
+    if (orgsProp) return orgsProp;
+    if (role === 'user') {
+      const ids = user?.organizationIds || [];
+      if (ids.length === 0) return [];
+      return contextOrgs.filter((o) => ids.includes(o.id));
+    }
+    return contextOrgs;
+  }, [orgsProp, contextOrgs, role, user?.organizationIds]);
+
+  const venues = useMemo(() => {
+    if (venuesProp) return venuesProp;
+    if (role === 'user') {
+      const ids = user?.assignedVenueIds || [];
+      if (ids.length === 0) return [];
+      return contextVenues.filter((v) => ids.includes(v.id));
+    }
+    return contextVenues;
+  }, [venuesProp, contextVenues, role, user?.assignedVenueIds]);
 
   const [selectedOrgId, setSelectedOrgId] = useState<string>('');
   const [selectedVenueId, setSelectedVenueId] = useState<string>('');
@@ -68,12 +100,13 @@ export function Reports() {
   const [loadingEnergy, setLoadingEnergy] = useState(false);
   const [energyError, setEnergyError] = useState<string | null>(null);
 
-  // On refresh / first open, load orgs + venues (same as Dashboard / Devices).
-  // Without this, filters stay empty until the user visits another page.
+  // Managers load full org/venue tree. Sub-users rely on assigned lists
+  // (hydrated from /me + optional props) — do not overwrite with all-org venues.
   useEffect(() => {
     if (authLoading) return;
+    if (role === 'user' || orgsProp || venuesProp) return;
     void fetchMyVenues().catch(() => {});
-  }, [authLoading, fetchMyVenues]);
+  }, [authLoading, fetchMyVenues, role, orgsProp, venuesProp]);
 
   // Default: first organization once list is available
   useEffect(() => {

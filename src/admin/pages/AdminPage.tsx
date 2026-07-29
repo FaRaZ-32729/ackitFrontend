@@ -8,7 +8,6 @@ import { VenuesPage } from './VenuesPage';
 import { DevicesPage } from './DevicesPage';
 import { AcBrandsPage } from './AcBrandsPage';
 import { PlansPage } from './PlansPage';
-import { OtaManagementPage } from './OtaManagementPage';
 import { createManagerByAdmin } from '../../api/authApi';
 
 const VALID_TABS = [
@@ -18,7 +17,6 @@ const VALID_TABS = [
   'devices',
   'ac-brands',
   'plans',
-  'ota-management',
 ] as const;
 
 type AdminTab = (typeof VALID_TABS)[number];
@@ -37,8 +35,6 @@ function AdminTabContent({ tab }: { tab: AdminTab }) {
       return <AcBrandsPage />;
     case 'plans':
       return <PlansPage />;
-    case 'ota-management':
-      return <OtaManagementPage />;
     default:
       return null;
   }

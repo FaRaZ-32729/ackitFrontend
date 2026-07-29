@@ -30,18 +30,6 @@ export function ManagersPage() {
     expandedManagerId, setExpandedManagerId,
     selectedManagerId, setSelectedManagerId,
     managerDetailTab, setManagerDetailTab,
-    selectedOtaVersion, setSelectedOtaVersion,
-    otaVersions, setOtaVersions,
-    deviceSearchQuery, setDeviceSearchQuery,
-    selectedDeviceIds, setSelectedDeviceIds,
-    uploadVersionId, setUploadVersionId,
-    uploadFile, setUploadFile,
-    isUploading, setIsUploading,
-    uploadProgress, setUploadProgress,
-    otaStatus, setOtaStatus,
-    otaProgress, setOtaProgress,
-    onlineDevices, setOnlineDevices,
-    handleStartOta, handleUploadFirmware,
     showAddManager, setShowAddManager,
     addManagerStep, setAddManagerStep,
     showAddPlan, setShowAddPlan,
@@ -169,15 +157,15 @@ export function ManagersPage() {
                         const usersPct = usersLimit > 0 ? Math.min(100, Math.round((selectedManagerUsers.length / usersLimit) * 100)) : 0;
       
                         return (
-                          <div className="space-y-6">
+                          <div className="space-y-6 min-w-0 overflow-x-hidden">
                             {/* PROFILE CARD */}
-                            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
-                              <div className="w-14 h-14 rounded-full bg-indigo-50 border border-indigo-100/50 flex items-center justify-center text-indigo-600 text-lg font-bold">
+                            <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-wrap items-center gap-3 sm:gap-4">
+                              <div className="w-14 h-14 rounded-full bg-indigo-50 border border-indigo-100/50 flex items-center justify-center text-indigo-600 text-lg font-bold shrink-0">
                                 {selectedManager.name ? selectedManager.name.slice(0, 2).toUpperCase() : 'M'}
                               </div>
                               <div className="space-y-1 flex-1 min-w-0">
-                                <h4 className="text-lg font-black text-slate-800">{selectedManager.name}</h4>
-                                <p className="text-sm text-slate-400 font-semibold">{selectedManager.email}</p>
+                                <h4 className="text-lg font-black text-slate-800 truncate">{selectedManager.name}</h4>
+                                <p className="text-sm text-slate-400 font-semibold truncate">{selectedManager.email}</p>
                                 <div className="flex gap-2 mt-2">
                                   <span className="px-2.5 py-0.5 bg-slate-50 border border-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-wider">
                                     {selectedManagerPlan ? selectedManagerPlan.name : 'No Plan'}
@@ -293,21 +281,54 @@ export function ManagersPage() {
                             </div>
       
                             {/* TABS HEADER */}
-                            <div className="border-b border-slate-100 flex gap-6 mt-8">
-                              {(['sub-users', 'organizations', 'venues', 'devices'] as const).map((tab) => (
-                                <button
-                                  key={tab}
-                                  onClick={() => setManagerDetailTab(tab)}
-                                  className={`py-3 text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 capitalize ${
-                                    managerDetailTab === tab
-                                      ? 'border-indigo-600 text-indigo-600'
-                                      : 'border-transparent text-slate-400 hover:text-slate-600'
-                                  }`}
-                                >
-                                  {tab === 'sub-users' ? <Users className="w-4 h-4" /> : tab === 'organizations' ? <Building2 className="w-4 h-4" /> : tab === 'venues' ? <MapPin className="w-4 h-4" /> : <MonitorSmartphone className="w-4 h-4" />}
-                                  {tab === 'sub-users' ? 'Sub-users' : tab}
-                                </button>
-                              ))}
+                            <div className="border-b border-slate-100 flex gap-1 sm:gap-4 md:gap-6 mt-8 w-full min-w-0 overflow-x-hidden">
+                              {(
+                                [
+                                  {
+                                    id: 'sub-users' as const,
+                                    short: 'Users',
+                                    full: 'Sub-users',
+                                    icon: Users,
+                                  },
+                                  {
+                                    id: 'organizations' as const,
+                                    short: 'Org',
+                                    full: 'Organizations',
+                                    icon: Building2,
+                                  },
+                                  {
+                                    id: 'venues' as const,
+                                    short: 'Ven',
+                                    full: 'Venues',
+                                    icon: MapPin,
+                                  },
+                                  {
+                                    id: 'devices' as const,
+                                    short: 'Device',
+                                    full: 'Devices',
+                                    icon: MonitorSmartphone,
+                                  },
+                                ] as const
+                              ).map((tab) => {
+                                const Icon = tab.icon;
+                                const active = managerDetailTab === tab.id;
+                                return (
+                                  <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => setManagerDetailTab(tab.id)}
+                                    className={`flex-1 sm:flex-none min-w-0 py-2.5 sm:py-3 px-1 sm:px-0 text-[11px] sm:text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 ${
+                                      active
+                                        ? 'border-indigo-600 text-indigo-600'
+                                        : 'border-transparent text-slate-400 hover:text-slate-600'
+                                    }`}
+                                  >
+                                    <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                                    <span className="truncate sm:hidden">{tab.short}</span>
+                                    <span className="hidden sm:inline">{tab.full}</span>
+                                  </button>
+                                );
+                              })}
                             </div>
       
                             {/* SUB-TAB CONTENTS */}

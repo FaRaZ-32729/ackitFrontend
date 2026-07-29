@@ -100,7 +100,7 @@ export type DevicesManagementPageProps = {
   setUnits?: React.Dispatch<React.SetStateAction<ACUnit[]>>;
   /** Restrict venues listed under an org (assigned venues for sub-users) */
   filterOrgVenues?: (venues: Venue[]) => Venue[];
-  /** Hide add/edit/delete when user only has view permission */
+  /** Hide add/edit/delete when false */
   canManage?: boolean;
 };
 
@@ -144,6 +144,11 @@ export function DevicesManagementPage({
   const [devicesError, setDevicesError] = useState('');
   const [powerPendingId, setPowerPendingId] = useState<string | null>(null);
   const [powerError, setPowerError] = useState('');
+  const [controlToast, setControlToast] = useState<{
+    message: string;
+    type: 'error' | 'info';
+  } | null>(null);
+  const controlToastTimer = useRef<number | null>(null);
   const [eventPendingDelete, setEventPendingDelete] = useState<{
     deviceId: string;
     event: ACEvent;
@@ -165,8 +170,25 @@ export function DevicesManagementPage({
       Object.values(tempDebounceTimers.current).forEach((timerId) => {
         window.clearTimeout(timerId);
       });
+      if (controlToastTimer.current) {
+        window.clearTimeout(controlToastTimer.current);
+      }
     };
   }, []);
+
+  const showControlToast = useCallback(
+    (message: string, type: 'error' | 'info' = 'error') => {
+      if (controlToastTimer.current) {
+        window.clearTimeout(controlToastTimer.current);
+      }
+      setControlToast({ message, type });
+      controlToastTimer.current = window.setTimeout(() => {
+        setControlToast(null);
+        controlToastTimer.current = null;
+      }, 2000);
+    },
+    []
+  );
 
   // Ensure orgs are loaded on first visit (managers); users already hydrated
   useEffect(() => {
@@ -705,6 +727,11 @@ export function DevicesManagementPage({
     const unit = venueDevices.find((u) => u.id === id);
     if (!unit || powerPendingId === id) return;
 
+    if (unit.status === 'offline') {
+      showControlToast('Device is offline', 'error');
+      return;
+    }
+
     const nextState: 'on' | 'off' = unit.isOn ? 'off' : 'on';
     setPowerError('');
     setPowerPendingId(id);
@@ -737,6 +764,12 @@ export function DevicesManagementPage({
   };
 
   const scheduleTemperatureSend = (id: string, temperature: number) => {
+    const unit = venueDevices.find((u) => u.id === id);
+    if (!unit || unit.status === 'offline') {
+      showControlToast('Device is offline', 'error');
+      return;
+    }
+
     const existing = tempDebounceTimers.current[id];
     if (existing) window.clearTimeout(existing);
 
@@ -773,6 +806,17 @@ export function DevicesManagementPage({
 
   return (
     <>
+      {controlToast && (
+        <div
+          className={`fixed top-16 lg:top-6 left-4 right-4 sm:left-auto sm:right-6 sm:w-auto z-[9999] px-4 py-3 rounded-2xl shadow-xl border flex items-center gap-3 backdrop-blur ${
+            controlToast.type === 'error'
+              ? 'bg-red-50 border-red-200 text-red-800'
+              : 'bg-blue-50 border-blue-200 text-blue-800'
+          }`}
+        >
+          <span className="text-xs font-bold">{controlToast.message}</span>
+        </div>
+      )}
       <div className="flex-1 flex flex-col min-h-0 p-4 md:p-5 bg-slate-50/15 overflow-hidden select-none">
                 {/* Header row */}
                 <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3 shrink-0 mb-4">
@@ -891,8 +935,13 @@ export function DevicesManagementPage({
                                   ? 'Locked'
                                   : 'Unlocked';
                             const controlsDisabled = !unit.isOn;
-      
+                            const offlineBlocked = !isOnline;
+
                             const applyTemp = (next: number) => {
+                              if (offlineBlocked) {
+                                showControlToast('Device is offline', 'error');
+                                return;
+                              }
                               const clamped = Math.max(16, Math.min(30, next));
                               setDeviceTempInputs(prev => ({ ...prev, [unit.id]: clamped.toString() }));
                               updateLocalDevice(unit.id, {
@@ -942,16 +991,20 @@ export function DevicesManagementPage({
                                   </td>
                                   <td className="py-3.5 px-2 hidden sm:table-cell">
                                     <div className="flex justify-center">
-                                      <div className={`flex items-center bg-slate-50 border border-slate-200 rounded-full p-0.5 ${controlsDisabled ? 'opacity-40 grayscale' : ''}`}>
+                                      <div className={`flex items-center bg-slate-50 border border-slate-200 rounded-full p-0.5 ${controlsDisabled || offlineBlocked ? 'opacity-40 grayscale' : ''}`}>
                                         <button
                                           type="button"
                                           onClick={() => {
+                                            if (offlineBlocked) {
+                                              showControlToast('Device is offline', 'error');
+                                              return;
+                                            }
                                             if (controlsDisabled) return;
                                             const currentVal = parseInt(currentInputVal) || unit.targetTemp;
                                             applyTemp(currentVal - 1);
                                           }}
-                                          disabled={controlsDisabled}
-                                          className={`w-6 h-6 flex items-center justify-center text-slate-500 hover:bg-white rounded-full font-black text-xs ${controlsDisabled ? 'cursor-not-allowed' : 'cursor-pointer active:scale-90'}`}
+                                          disabled={controlsDisabled && !offlineBlocked}
+                                          className={`w-6 h-6 flex items-center justify-center text-slate-500 hover:bg-white rounded-full font-black text-xs ${controlsDisabled || offlineBlocked ? 'cursor-not-allowed' : 'cursor-pointer active:scale-90'}`}
                                         >
                                           -
                                         </button>
@@ -960,8 +1013,12 @@ export function DevicesManagementPage({
                                           min="16"
                                           max="30"
                                           value={currentInputVal}
-                                          disabled={controlsDisabled}
+                                          disabled={controlsDisabled || offlineBlocked}
                                           onChange={(e) => {
+                                            if (offlineBlocked) {
+                                              showControlToast('Device is offline', 'error');
+                                              return;
+                                            }
                                             let rawVal = e.target.value;
                                             if (rawVal !== '') {
                                               const val = parseInt(rawVal);
@@ -981,6 +1038,7 @@ export function DevicesManagementPage({
                                             }
                                           }}
                                           onBlur={() => {
+                                            if (offlineBlocked) return;
                                             if (controlsDisabled) return;
                                             let val = parseInt(currentInputVal);
                                             if (isNaN(val) || val < 16) val = 16;
@@ -988,24 +1046,28 @@ export function DevicesManagementPage({
                                             applyTemp(val);
                                           }}
                                           onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && !controlsDisabled) {
+                                            if (e.key === 'Enter' && !controlsDisabled && !offlineBlocked) {
                                               let val = parseInt(currentInputVal);
                                               if (isNaN(val) || val < 16) val = 16;
                                               if (val > 30) val = 30;
                                               applyTemp(val);
                                             }
                                           }}
-                                          className={`w-8 text-center font-black text-xs text-slate-800 bg-transparent outline-none no-spin ${controlsDisabled ? 'cursor-not-allowed' : ''}`}
+                                          className={`w-8 text-center font-black text-xs text-slate-800 bg-transparent outline-none no-spin ${controlsDisabled || offlineBlocked ? 'cursor-not-allowed' : ''}`}
                                         />
                                         <button
                                           type="button"
                                           onClick={() => {
+                                            if (offlineBlocked) {
+                                              showControlToast('Device is offline', 'error');
+                                              return;
+                                            }
                                             if (controlsDisabled) return;
                                             const currentVal = parseInt(currentInputVal) || unit.targetTemp;
                                             applyTemp(currentVal + 1);
                                           }}
-                                          disabled={controlsDisabled}
-                                          className={`w-6 h-6 flex items-center justify-center text-slate-500 hover:bg-white rounded-full font-black text-xs ${controlsDisabled ? 'cursor-not-allowed' : 'cursor-pointer active:scale-90'}`}
+                                          disabled={controlsDisabled && !offlineBlocked}
+                                          className={`w-6 h-6 flex items-center justify-center text-slate-500 hover:bg-white rounded-full font-black text-xs ${controlsDisabled || offlineBlocked ? 'cursor-not-allowed' : 'cursor-pointer active:scale-90'}`}
                                         >
                                           +
                                         </button>
@@ -1019,15 +1081,17 @@ export function DevicesManagementPage({
                                         onClick={() => void toggleLocalPower(unit.id)}
                                         disabled={powerPendingId === unit.id}
                                         title={
-                                          powerPendingId === unit.id
-                                            ? 'Waiting for device…'
-                                            : 'Toggle power'
+                                          !isOnline
+                                            ? 'Device is offline'
+                                            : powerPendingId === unit.id
+                                              ? 'Waiting for device…'
+                                              : 'Toggle power'
                                         }
                                         className={`relative inline-flex h-6 w-12 items-center rounded-full transition-colors focus:outline-none ${
                                           powerPendingId === unit.id
                                             ? 'opacity-60 cursor-not-allowed'
                                             : 'cursor-pointer'
-                                        } ${unit.isOn ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                                        } ${!isOnline ? 'opacity-50' : ''} ${unit.isOn ? 'bg-emerald-500' : 'bg-slate-300'}`}
                                       >
                                         <span className={`absolute text-[8px] font-black text-white ${unit.isOn ? 'left-1.5' : 'right-1.5'}`}>
                                           {powerPendingId === unit.id ? '…' : unit.isOn ? 'ON' : 'OFF'}

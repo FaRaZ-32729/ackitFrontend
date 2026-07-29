@@ -214,7 +214,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       email: me.email,
       role: me.role,
       isActive: me.isActive ?? true,
-      permission: me.permission ?? null,
       currentSubscription: me.currentSubscription
         ? String(me.currentSubscription._id || me.currentSubscription)
         : null,
@@ -278,7 +277,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       email: data.user.email,
       role: data.user.role,
       isActive: data.user.isActive,
-      permission: data.user.permission ?? null,
       currentSubscription: data.user.currentSubscription
         ? String(data.user.currentSubscription)
         : null,

@@ -3,7 +3,6 @@ import { useManagerWorkspace } from '../context/ManagerWorkspaceContext';
 import { useAppContext } from '../../context/AppContext';
 import { Users, User, Edit, Trash2, MapPin, Building2, Loader2 } from 'lucide-react';
 import { MultiSelectDropdown } from '../../components/ui/MultiSelectDropdown';
-import { CustomDropdown } from '../../components/ui/CustomDropdown';
 import axios from 'axios';
 
 /** Manager users page — markup/CSS preserved from legacy ManagerView */
@@ -20,19 +19,35 @@ export function UsersPage() {
     units, users, orgs, venues,
     onAddUser,
     newUserName, setNewUserName, newUserEmail, setNewUserEmail,
-    newUserPermission, setNewUserPermission, newUserOrgs, setNewUserOrgs,
+    newUserOrgs, setNewUserOrgs,
     newUserVenues, setNewUserVenues,
     editingUser, setEditingUser,
     deletingId, setDeletingId, deleteType, setDeleteType,
     openUserDetailModal,
+    showToast,
   } = useManagerWorkspace();
 
   const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState('');
+
+  const openEditUser = (user: (typeof users)[number]) => {
+    const organizationIds = user.organizationIds || [];
+    setEditingUser({
+      ...user,
+      organizationIds,
+      assignedVenueIds: (user.assignedVenueIds || []).filter((venueId) => {
+        const venue = venues.find((v) => v.id === venueId);
+        return !!venue && organizationIds.includes(venue.orgId);
+      }),
+    });
+  };
 
   useEffect(() => {
     void Promise.allSettled([fetchMyUsers(), fetchMyVenues()]);
   }, [fetchMyUsers, fetchMyVenues]);
+
+  useEffect(() => {
+    if (usersError) showToast(usersError, 'error');
+  }, [usersError, showToast]);
 
   const venueOptions = useMemo(() => {
     const selectedOrgs = newUserOrgs.length > 0 ? newUserOrgs : orgs.map((o) => o.id);
@@ -46,7 +61,6 @@ export function UsersPage() {
       return;
     }
     setCreating(true);
-    setCreateError('');
     try {
       await onAddUser({
         name: newUserName.trim(),
@@ -54,14 +68,13 @@ export function UsersPage() {
         status: 'pending',
         assignedVenueIds: newUserVenues,
         organizationIds: newUserOrgs,
-        permission: newUserPermission,
         managerId: authUser?.id || '',
       });
       setNewUserName('');
       setNewUserEmail('');
-      setNewUserPermission('view');
       setNewUserOrgs([]);
       setNewUserVenues([]);
+      showToast('User invited successfully', 'success');
     } catch (err) {
       let message = 'Failed to create user';
       if (axios.isAxiosError(err)) {
@@ -73,7 +86,7 @@ export function UsersPage() {
       } else if (err instanceof Error) {
         message = err.message;
       }
-      setCreateError(message);
+      showToast(message, 'error');
     } finally {
       setCreating(false);
     }
@@ -149,20 +162,6 @@ export function UsersPage() {
       
                       <div className="space-y-1.5 min-w-0">
                         <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
-                          Permission
-                        </label>
-                        <CustomDropdown
-                          value={newUserPermission}
-                          onChange={(v) => setNewUserPermission(v as 'view' | 'manage')}
-                          options={[
-                            { value: 'view', label: 'View' },
-                            { value: 'manage', label: 'Manage' },
-                          ]}
-                        />
-                      </div>
-      
-                      <div className="space-y-1.5 min-w-0">
-                        <label className="block text-xs font-black uppercase text-slate-500 tracking-wider">
                           Assign Venues
                         </label>
                         <MultiSelectDropdown
@@ -177,11 +176,6 @@ export function UsersPage() {
                     </div>
       
                     <div className="px-5 py-4 border-t border-slate-100 shrink-0 space-y-3">
-                      {createError && (
-                        <div className="p-2.5 bg-red-50 border border-red-100 rounded-xl text-red-600 text-[11px] font-semibold">
-                          {createError}
-                        </div>
-                      )}
                       <button
                         type="button"
                         onClick={() => {
@@ -217,11 +211,6 @@ export function UsersPage() {
                     </div>
       
                     <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
-                      {usersError && (
-                        <div className="m-4 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold">
-                          {usersError}
-                        </div>
-                      )}
                       {usersLoading && users.length === 0 ? (
                         <div className="h-full min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
                           <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-3" />
@@ -293,7 +282,7 @@ export function UsersPage() {
                                     <div className="flex justify-end gap-1">
                                       <button
                                         type="button"
-                                        onClick={() => setEditingUser(user)}
+                                        onClick={() => openEditUser(user)}
                                         className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
                                         title="Edit"
                                       >
@@ -334,7 +323,7 @@ export function UsersPage() {
                       <div className="flex-1 min-h-[12rem] flex flex-col items-center justify-center p-8 text-center">
                         <Users className="w-12 h-12 text-slate-300 mb-3" />
                         <span className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">No Users Found</span>
-                        <p className="text-xs text-slate-400 max-w-[200px]">Create or invite users to assign them permissions</p>
+                        <p className="text-xs text-slate-400 max-w-[200px]">Create or invite users and assign organizations & venues</p>
                       </div>
                     ) : (
                       <table className="w-full table-fixed border-collapse">
@@ -372,7 +361,7 @@ export function UsersPage() {
                                   <div className="flex justify-end gap-1">
                                     <button
                                       type="button"
-                                      onClick={() => setEditingUser(user)}
+                                      onClick={() => openEditUser(user)}
                                       className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
                                       title="Edit"
                                     >

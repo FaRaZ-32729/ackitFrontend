@@ -94,7 +94,7 @@ function useUserWorkspaceValue(props: UserWorkspaceProps) {
     assignedVenues,
     assignedUnits,
     assignedVenueIds,
-    canManage: user?.permission === 'manage',
+    canManage: true,
     ...deviceCrud,
   };
 }

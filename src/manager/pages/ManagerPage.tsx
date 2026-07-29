@@ -111,7 +111,6 @@ export function ManagerPage() {
           email: u.email.trim(),
           organizations: organizationIds,
           venues: u.assignedVenueIds || [],
-          permission: u.permission || 'view',
         });
       }}
       onAddOrg={async (o) => {
@@ -125,10 +124,13 @@ export function ManagerPage() {
         await deleteSubUser(id);
       }}
       onUpdateUser={async (id, data) => {
+        const organizationIds = data.organizationIds || [];
+        if (organizationIds.length === 0) {
+          throw new Error('At least one organization is required');
+        }
         await updateSubUser(id, {
-          organizations: data.organizationIds,
-          venues: data.assignedVenueIds,
-          permission: data.permission,
+          organizations: organizationIds,
+          venues: data.assignedVenueIds || [],
         });
       }}
       onDeleteOrg={async (id) => {

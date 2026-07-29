@@ -2,20 +2,18 @@ import axios from 'axios';
 import api from './axios';
 import type { UserAccount } from '../types';
 
-export type UserPermission = 'view' | 'manage';
-
 export interface CreateSubUserPayload {
   name: string;
   email: string;
   organizations: string[];
   venues?: string[];
-  permission?: UserPermission;
 }
 
 export interface UpdateSubUserPayload {
-  organizations?: string[];
+  /** Organization Mongo IDs to assign (replaces existing list) */
+  organizations: string[];
+  /** Venue Mongo IDs to assign (replaces existing list; empty = none) */
   venues?: string[];
-  permission?: UserPermission;
 }
 
 interface ApiSubUser {
@@ -25,7 +23,6 @@ interface ApiSubUser {
   email: string;
   isActive?: boolean;
   isVerified?: boolean;
-  permission?: string | null;
   creatorId?: string | { _id: string };
   organizations?: Array<string | { _id: string; name?: string }>;
   venues?: Array<{
@@ -78,10 +75,6 @@ export function mapApiSubUser(user: ApiSubUser): UserAccount {
     assignedVenueIds,
     organizationIds,
     managerId,
-    permission:
-      user.permission === 'manage' || user.permission === 'view'
-        ? user.permission
-        : 'view',
   };
 }
 
@@ -114,7 +107,6 @@ export async function createSubUser(
       name: string;
       email: string;
       role: string;
-      permission?: string | null;
     };
   }>('/api/auth/register-user', {
     name: payload.name,
@@ -122,7 +114,6 @@ export async function createSubUser(
     role: 'user',
     organizations: payload.organizations,
     venues: payload.venues || [],
-    permission: payload.permission || 'view',
   });
 
   return {
@@ -133,10 +124,6 @@ export async function createSubUser(
     assignedVenueIds: payload.venues || [],
     organizationIds: payload.organizations,
     managerId: '',
-    permission:
-      data.user.permission === 'manage' || data.user.permission === 'view'
-        ? data.user.permission
-        : payload.permission || 'view',
   };
 }
 
@@ -148,7 +135,10 @@ export async function updateSubUser(
     success: boolean;
     message: string;
     user: ApiSubUser;
-  }>(`/api/user/update-user/${userId}`, payload);
+  }>(`/api/user/update-user/${userId}`, {
+    organizations: payload.organizations,
+    venues: payload.venues || [],
+  });
 
   return mapApiSubUser(data.user);
 }

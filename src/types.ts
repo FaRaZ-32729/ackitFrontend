@@ -21,7 +21,6 @@ export interface AuthUser {
   email: string;
   role: Role;
   isActive: boolean;
-  permission?: string | null;
   currentSubscription?: string | null;
   assignedVenueIds?: string[];
   organizationIds?: string[];
@@ -43,7 +42,6 @@ export interface UserAccount {
   assignedVenueIds: string[];
   organizationIds?: string[];
   managerId: string;
-  permission?: 'view' | 'manage';
   subscriptionType?: string;
 }
 

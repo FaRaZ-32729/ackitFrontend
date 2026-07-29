@@ -103,7 +103,6 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
   const [addUserStep, setAddUserStep] = useState<'details' | 'success'>('details');
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserPermission, setNewUserPermission] = useState<'view' | 'manage'>('view');
   const [newUserOrgs, setNewUserOrgs] = useState<string[]>([]);
   const [newUserVenues, setNewUserVenues] = useState<string[]>([]);
 
@@ -146,8 +145,10 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     deviceToastTimer.current = window.setTimeout(() => {
       setDeviceToast(null);
       deviceToastTimer.current = null;
-    }, 2500);
+    }, 2000);
   };
+  /** Alias used by Users / Orgs / Venues pages for errors & warnings */
+  const showToast = showDeviceToast;
   const [isAddingDevice, setIsAddingDevice] = useState(false);
 
   // Edit Device Form State
@@ -204,7 +205,7 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
           setNewDeviceBrands(brands);
           setNewDeviceBrand(brands[0]?.id || '');
         })
-        .catch(() => setNewDeviceError('Failed to load AC brands'));
+        .catch(() => showDeviceToast('Failed to load AC brands', 'error'));
     }
   }, [showAddDevice, orgs]);
 
@@ -229,7 +230,7 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
         if (!active) return;
         setNewDeviceVenues([]);
         setNewDeviceVenueId('');
-        setNewDeviceError('Failed to load venues for this organization');
+        showDeviceToast('Failed to load venues for this organization', 'error');
       });
 
     return () => {
@@ -260,7 +261,7 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
           return { ...prev, brandId };
         });
       })
-      .catch(() => setEditDeviceError('Failed to load AC brands'));
+      .catch(() => showDeviceToast('Failed to load AC brands', 'error'));
   }, [editingDevice?.id]);
 
   React.useEffect(() => {
@@ -284,7 +285,7 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
       })
       .catch(() => {
         setEditDeviceVenues([]);
-        setEditDeviceError('Failed to load venues for this organization');
+        showDeviceToast('Failed to load venues for this organization', 'error');
       });
   }, [editingDevice?.organizationId]);
 
@@ -414,7 +415,6 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
       status: 'pending',
       assignedVenueIds: newUserVenues,
       organizationIds: newUserOrgs,
-      permission: newUserPermission,
       managerId: '',
     });
     setAddUserStep('success');
@@ -447,7 +447,6 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
       setAddUserStep('details');
       setNewUserName('');
       setNewUserEmail('');
-      setNewUserPermission('view');
       setNewUserOrgs([]);
       setNewUserVenues([]);
     }, 300);
@@ -486,16 +485,15 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     // Guard against stale venue after org switch
     const venueBelongsToOrg = newDeviceVenues.some((v) => v.id === newDeviceVenueId);
     if (venueBelongsToOrg === false) {
-      const message = 'Please select a venue that belongs to the selected organization';
-      setNewDeviceError(message);
-      showDeviceToast(message, 'error');
+      showDeviceToast(
+        'Please select a venue that belongs to the selected organization',
+        'error'
+      );
       return;
     }
 
     if (newDeviceName.trim().length < 2) {
-      const message = 'Device name must be at least 2 characters';
-      setNewDeviceError(message);
-      showDeviceToast(message, 'error');
+      showDeviceToast('Device name must be at least 2 characters', 'error');
       return;
     }
 
@@ -505,9 +503,7 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
         u.name.trim().toLowerCase() === newDeviceName.trim().toLowerCase()
     );
     if (nameExistsLocally) {
-      const message = 'This name is already present in this venue';
-      setNewDeviceError(message);
-      showDeviceToast(message, 'error');
+      showDeviceToast('This name is already present in this venue', 'error');
       return;
     }
 
@@ -547,7 +543,6 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
         ? 'This name is already present in this venue'
         : details || apiMessage || error?.message || 'Failed to create device';
 
-      setNewDeviceError(message);
       showDeviceToast(message, 'error');
     } finally {
       setIsAddingDevice(false);
@@ -594,12 +589,12 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
       deviceUpdatedListeners.current.forEach((fn) => fn(merged));
       setEditingDevice(null);
     } catch (error: any) {
-      setEditDeviceError(
+      const message =
         error?.response?.data?.errors?.[0]?.message ||
         error?.response?.data?.message ||
         error?.message ||
-        'Failed to update device'
-      );
+        'Failed to update device';
+      showDeviceToast(message, 'error');
     } finally {
       setIsUpdatingDevice(false);
     }
@@ -619,14 +614,13 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
       }
       setDeletingId(null);
       setDeleteType(null);
+      showDeviceToast('Deleted successfully', 'success');
     } catch (error: any) {
-      if (deleteType === 'device') {
-        setDeleteError(
-          error?.response?.data?.message ||
-          error?.message ||
-          'Failed to delete device'
-        );
-      }
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to delete';
+      showDeviceToast(message, 'error');
       // Keep confirm open on failure
     } finally {
       setIsDeletingDevice(false);
@@ -728,7 +722,7 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     onDeleteVenue, onUpdateVenue, onDeleteDevice: handleDeleteDeviceLocal, onUpdateDevice,
     showAddUser, setShowAddUser, addUserStep, setAddUserStep,
     newUserName, setNewUserName, newUserEmail, setNewUserEmail,
-    newUserPermission, setNewUserPermission, newUserOrgs, setNewUserOrgs, newUserVenues, setNewUserVenues,
+    newUserOrgs, setNewUserOrgs, newUserVenues, setNewUserVenues,
     showAddOrg, setShowAddOrg, newOrgName, setNewOrgName,
     newOrgAddress, setNewOrgAddress,
     showAddVenue, setShowAddVenue, newVenueName, setNewVenueName, newVenueOrgId, setNewVenueOrgId,
@@ -737,7 +731,7 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     newDeviceBrand, setNewDeviceBrand, newDeviceEnergySensor, setNewDeviceEnergySensor,
     newDeviceCapacity, setNewDeviceCapacity, newDeviceVoltage, setNewDeviceVoltage,
     newDeviceVenues, newDeviceBrands,
-    newDeviceError, isAddingDevice, deviceToast, setDeviceToast,
+    newDeviceError, isAddingDevice, deviceToast, setDeviceToast, showToast, showDeviceToast,
     editDeviceVenues, editDeviceBrands, editDeviceError, isUpdatingDevice,
     isDeletingDevice, deleteError, setDeleteError,
     editingUser, setEditingUser, editingOrg, setEditingOrg,

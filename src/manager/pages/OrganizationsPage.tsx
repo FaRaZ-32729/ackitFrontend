@@ -15,7 +15,7 @@ export function OrganizationsPage() {
     onDeleteVenue, onUpdateVenue, onDeleteDevice, onUpdateDevice,
     showAddUser, setShowAddUser, addUserStep, setAddUserStep,
     newUserName, setNewUserName, newUserEmail, setNewUserEmail,
-    newUserPermission, setNewUserPermission, newUserOrgs, setNewUserOrgs, newUserVenues, setNewUserVenues,
+    newUserOrgs, setNewUserOrgs, newUserVenues, setNewUserVenues,
     showAddOrg, setShowAddOrg, newOrgName, setNewOrgName,
     newOrgAddress, setNewOrgAddress,
     showAddVenue, setShowAddVenue, newVenueName, setNewVenueName, newVenueOrgId, setNewVenueOrgId,
@@ -45,21 +45,22 @@ export function OrganizationsPage() {
     handleAddUser, closeAddUserModal, openUserDetailModal, closeUserDetailModal,
     handleAddOrg, handleAddVenue, handleAddDevice, closeAddEventModal, handleAddEvent,
     toggleVenue, filteredManagedVenues, filteredManagedDevices,
+    showToast,
   } = useManagerWorkspace();
 
   const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState('');
 
   useEffect(() => {
-    void fetchMyOrganizations().catch(() => {
-      // surfaced via orgsError
-    });
+    void fetchMyOrganizations().catch(() => {});
   }, [fetchMyOrganizations]);
+
+  useEffect(() => {
+    if (orgsError) showToast(orgsError, 'error');
+  }, [orgsError, showToast]);
 
   const handleCreateOrganization = async () => {
     if (!newOrgName.trim() || creating) return;
     setCreating(true);
-    setCreateError('');
     try {
       await onAddOrg({
         name: newOrgName.trim(),
@@ -68,6 +69,7 @@ export function OrganizationsPage() {
       });
       setNewOrgName('');
       setNewOrgAddress('');
+      showToast('Organization created', 'success');
     } catch (err) {
       let message = 'Failed to create organization';
       if (axios.isAxiosError(err)) {
@@ -77,7 +79,7 @@ export function OrganizationsPage() {
         } | undefined;
         message = data?.errors?.[0]?.message || data?.message || message;
       }
-      setCreateError(message);
+      showToast(message, 'error');
     } finally {
       setCreating(false);
     }
@@ -129,11 +131,6 @@ export function OrganizationsPage() {
                     </div>
       
                     <div className="px-5 py-4 border-t border-slate-100 shrink-0 space-y-3">
-                      {createError && (
-                        <div className="p-2.5 bg-red-50 border border-red-100 rounded-xl text-red-600 text-[11px] font-semibold">
-                          {createError}
-                        </div>
-                      )}
                       <button
                         type="button"
                         onClick={() => void handleCreateOrganization()}
@@ -161,11 +158,6 @@ export function OrganizationsPage() {
                     </div>
       
                     <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide overflow-x-hidden">
-                      {orgsError && (
-                        <div className="m-4 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold">
-                          {orgsError}
-                        </div>
-                      )}
                       {orgsLoading && orgs.length === 0 ? (
                         <div className="h-full min-h-[12rem] flex items-center justify-center gap-2 text-slate-400 text-sm font-semibold">
                           <Loader2 className="w-5 h-5 animate-spin" />

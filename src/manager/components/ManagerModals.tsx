@@ -16,7 +16,7 @@ export function ManagerModals() {
     onDeleteVenue, onUpdateVenue, onDeleteDevice, onUpdateDevice,
     showAddUser, setShowAddUser, addUserStep, setAddUserStep,
     newUserName, setNewUserName, newUserEmail, setNewUserEmail,
-    newUserPermission, setNewUserPermission, newUserOrgs, setNewUserOrgs, newUserVenues, setNewUserVenues,
+    newUserOrgs, setNewUserOrgs, newUserVenues, setNewUserVenues,
     showAddOrg, setShowAddOrg, newOrgName, setNewOrgName,
     newOrgAddress, setNewOrgAddress,
     showAddVenue, setShowAddVenue, newVenueName, setNewVenueName, newVenueOrgId, setNewVenueOrgId,
@@ -25,7 +25,7 @@ export function ManagerModals() {
     newDeviceBrand, setNewDeviceBrand, newDeviceEnergySensor, setNewDeviceEnergySensor,
     newDeviceCapacity, setNewDeviceCapacity, newDeviceVoltage, setNewDeviceVoltage,
     newDeviceVenues, newDeviceBrands,
-    newDeviceError, isAddingDevice, deviceToast, setDeviceToast,
+    newDeviceError, isAddingDevice, deviceToast, setDeviceToast, showToast,
     editDeviceVenues, editDeviceBrands, editDeviceError, isUpdatingDevice,
     isDeletingDevice, deleteError, setDeleteError,
     editingUser, setEditingUser, editingOrg, setEditingOrg,
@@ -69,7 +69,7 @@ export function ManagerModals() {
               <div className="max-h-[60vh] overflow-y-auto scrollbar-hide pr-2">
                 {activeDetailType === 'venues' && selectedUserForModal && (
                   <div className="space-y-3">
-                    <p className="text-sm text-slate-500 mb-4">List of venues this user has permission to manage.</p>
+                    <p className="text-sm text-slate-500 mb-4">List of venues assigned to this user.</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {venues.filter(v => selectedUserForModal.assignedVenueIds?.includes(v.id)).map((v) => (
                         <div key={v.id} className="p-4 bg-blue-50 rounded-xl border border-blue-100 flex items-center gap-3">
@@ -205,17 +205,6 @@ export function ManagerModals() {
                         icon={Building2}
                         placeholder="Select organizations…"
                         options={orgs.map((o) => ({ value: o.id, label: o.name }))}
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Permission</label>
-                      <CustomDropdown
-                        value={newUserPermission}
-                        onChange={(v) => setNewUserPermission(v as 'view' | 'manage')}
-                        options={[
-                          { value: 'view', label: 'View' },
-                          { value: 'manage', label: 'Manage' },
-                        ]}
                       />
                     </div>
                     <div className="min-w-0">
@@ -375,11 +364,6 @@ export function ManagerModals() {
               title="Add Device"
             >
               <div className="space-y-4">
-                {newDeviceError && (
-                  <div className="p-3 bg-red-50 border border-red-100 text-red-600 rounded-xl text-xs font-bold">
-                    {newDeviceError}
-                  </div>
-                )}
                 <div>
                   <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">Device Name</label>
                   <input
@@ -495,44 +479,35 @@ export function ManagerModals() {
               </div>
             </Modal>
       
-            {/* Edit User Modal */}
+            {/* Edit User Modal — orgs & venues only */}
             <Modal
               isOpen={!!editingUser}
               onClose={() => setEditingUser(null)}
-              title="Edit User"
+              title="Edit User Access"
+              subtitle={
+                editingUser
+                  ? `${editingUser.name} · ${editingUser.email}`
+                  : undefined
+              }
             >
               {editingUser && (
                 <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
-                    <input
-                      type="text"
-                      value={editingUser.name}
-                      disabled
-                      className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                    <input
-                      type="email"
-                      value={editingUser.email}
-                      disabled
-                      className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-500 outline-none"
-                    />
-                  </div>
                   <div className="min-w-0">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Organizations <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Organizations <span className="text-red-500">*</span>
+                    </label>
                     <MultiSelectDropdown
                       values={editingUser.organizationIds || []}
                       onChange={(ids) =>
                         setEditingUser({
                           ...editingUser,
                           organizationIds: ids,
-                          assignedVenueIds: (editingUser.assignedVenueIds || []).filter((venueId) => {
-                            const venue = venues.find((v) => v.id === venueId);
-                            return venue ? ids.includes(venue.orgId) : false;
-                          }),
+                          assignedVenueIds: (editingUser.assignedVenueIds || []).filter(
+                            (venueId) => {
+                              const venue = venues.find((v) => v.id === venueId);
+                              return venue ? ids.includes(venue.orgId) : false;
+                            }
+                          ),
                         })
                       }
                       icon={Building2}
@@ -541,26 +516,14 @@ export function ManagerModals() {
                     />
                   </div>
                   <div className="min-w-0">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Permission</label>
-                    <CustomDropdown
-                      value={editingUser.permission || 'view'}
-                      onChange={(v) =>
-                        setEditingUser({
-                          ...editingUser,
-                          permission: v as 'view' | 'manage',
-                        })
-                      }
-                      options={[
-                        { value: 'view', label: 'View' },
-                        { value: 'manage', label: 'Manage' },
-                      ]}
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Assigned Venues</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Assigned Venues
+                    </label>
                     <MultiSelectDropdown
                       values={editingUser.assignedVenueIds || []}
-                      onChange={(ids) => setEditingUser({ ...editingUser, assignedVenueIds: ids })}
+                      onChange={(ids) =>
+                        setEditingUser({ ...editingUser, assignedVenueIds: ids })
+                      }
                       icon={MapPin}
                       placeholder={
                         !(editingUser.organizationIds && editingUser.organizationIds.length > 0)
@@ -568,36 +531,90 @@ export function ManagerModals() {
                           : 'Select venues…'
                       }
                       options={venues
-                        .filter((v) => (editingUser.organizationIds || []).includes(v.orgId))
+                        .filter((v) =>
+                          (editingUser.organizationIds || []).includes(v.orgId)
+                        )
                         .map((v) => ({ value: v.id, label: v.name }))}
-                      disabled={!(editingUser.organizationIds && editingUser.organizationIds.length > 0)}
+                      disabled={
+                        !(
+                          editingUser.organizationIds &&
+                          editingUser.organizationIds.length > 0
+                        )
+                      }
                     />
                   </div>
                   <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                     <button
+                      type="button"
                       onClick={() => setEditingUser(null)}
                       className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors"
                     >
                       Cancel
                     </button>
                     <button
+                      type="button"
                       onClick={() => {
                         void (async () => {
                           try {
-                            if (!(editingUser.organizationIds && editingUser.organizationIds.length > 0)) {
+                            const organizationIds = editingUser.organizationIds || [];
+                            if (organizationIds.length === 0) {
+                              showToast(
+                                'At least one organization is required',
+                                'error'
+                              );
                               return;
                             }
-                            await onUpdateUser(editingUser.id, editingUser);
+                            // Drop venues that are not under the selected organizations
+                            // (stale assignments caused 403 from the API)
+                            const assignedVenueIds = (
+                              editingUser.assignedVenueIds || []
+                            ).filter((venueId) => {
+                              const venue = venues.find((v) => v.id === venueId);
+                              return (
+                                !!venue &&
+                                organizationIds.includes(venue.orgId)
+                              );
+                            });
+                            await onUpdateUser(editingUser.id, {
+                              organizationIds,
+                              assignedVenueIds,
+                            });
                             setEditingUser(null);
-                          } catch {
-                            // Keep modal open so user can retry
+                            showToast('User access updated', 'success');
+                          } catch (err: unknown) {
+                            const message =
+                              (
+                                err as {
+                                  response?: {
+                                    data?: {
+                                      message?: string;
+                                      errors?: { message?: string }[];
+                                    };
+                                  };
+                                  message?: string;
+                                }
+                              )?.response?.data?.errors?.[0]?.message ||
+                              (
+                                err as {
+                                  response?: { data?: { message?: string } };
+                                  message?: string;
+                                }
+                              )?.response?.data?.message ||
+                              (err as { message?: string })?.message ||
+                              'Failed to update user access';
+                            showToast(message, 'error');
                           }
                         })();
                       }}
-                      disabled={!(editingUser.organizationIds && editingUser.organizationIds.length > 0)}
+                      disabled={
+                        !(
+                          editingUser.organizationIds &&
+                          editingUser.organizationIds.length > 0
+                        )
+                      }
                       className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
                     >
-                      Update User
+                      Update Access
                     </button>
                   </div>
                 </div>
@@ -724,11 +741,6 @@ export function ManagerModals() {
             >
               {editingDevice && (
                 <div className="space-y-4">
-                  {editDeviceError && (
-                    <div className="text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-                      {editDeviceError}
-                    </div>
-                  )}
                   <div>
                     <label className="block text-xs font-black uppercase text-slate-500 tracking-wider mb-1">Device Name</label>
                     <input
@@ -904,11 +916,6 @@ export function ManagerModals() {
                   <Activity className="w-6 h-6 shrink-0" />
                   <p className="text-sm font-medium">Are you sure you want to delete this {deleteType}? This action cannot be undone.</p>
                 </div>
-                {deleteError && (
-                  <div className="text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-                    {deleteError}
-                  </div>
-                )}
                 <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                   <button
                     type="button"

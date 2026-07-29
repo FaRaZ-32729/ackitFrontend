@@ -49,10 +49,6 @@ export function UserPage() {
       assignedVenueIds: authUser.assignedVenueIds || [],
       organizationIds: authUser.organizationIds || [],
       managerId: '',
-      permission:
-        authUser.permission === 'manage' || authUser.permission === 'view'
-          ? authUser.permission
-          : 'view',
     };
   }, [authUser]);
 

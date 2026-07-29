@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Users, Building2, MapPin, MonitorSmartphone, CreditCard, Cpu, ChevronDown,
-  Activity, Menu, Bell, LogOut, ChevronRight, Sliders, Zap,
+  Activity, Menu, Bell, LogOut, ChevronRight, Sliders,
 } from 'lucide-react';
 import {
   AdminWorkspaceProvider,
@@ -105,23 +105,6 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
           {/* Standalone items */}
           <div className="space-y-1 pt-1">
-            {/* OTA Management */}
-            <button
-              onClick={() => {
-                setCurrentTab('ota-management');
-                setMobileSidebarOpen(false);
-                setSelectedManagerId(null);
-              }}
-              className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                currentTab === 'ota-management'
-                  ? 'bg-indigo-50 text-indigo-600'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-            >
-              <Zap className={`w-4 h-4 ${currentTab === 'ota-management' ? 'text-indigo-600' : 'text-slate-400'}`} />
-              <span>OTA Management</span>
-            </button>
-
             {/* Brand Management */}
             <button
               onClick={() => {
@@ -242,8 +225,6 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
               <h2 className="text-base font-black text-slate-800 capitalize tracking-tight font-sans">
                 {currentTab === 'ac-brands' 
                   ? 'AC Brand Management' 
-                  : currentTab === 'ota-management'
-                  ? 'OTA Management'
                   : currentTab === 'plans'
                   ? 'Plan Management'
                   : currentTab}
@@ -263,10 +244,10 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
         {/* Dynamic Content — brand page scrolls inside its own cards */}
         <main
-          className={`flex-1 min-h-0 flex flex-col ${
+          className={`flex-1 min-h-0 flex flex-col min-w-0 ${
             currentTab === 'ac-brands'
               ? 'overflow-hidden p-0'
-              : 'overflow-y-auto p-6'
+              : 'overflow-y-auto overflow-x-hidden p-4 sm:p-6'
           }`}
         >
           {children}

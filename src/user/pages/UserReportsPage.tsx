@@ -1,7 +1,11 @@
 import React from 'react';
 import { Reports } from '../../components/reports/Reports';
+import { useUserWorkspace } from '../context/UserWorkspaceContext';
 
-/** User reports page — API-driven energy table (org + venue filters). */
+/**
+ * Sub-user energy reports — org/venue dropdowns limited to assigned access only.
+ */
 export function UserReportsPage() {
-  return <Reports />;
+  const { orgs, venues } = useUserWorkspace();
+  return <Reports orgs={orgs} venues={venues} />;
 }

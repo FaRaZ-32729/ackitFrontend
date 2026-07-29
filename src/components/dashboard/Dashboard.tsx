@@ -72,6 +72,27 @@ function filterPowerTempTargets(
   );
 }
 
+/** Toast copy when bulk power/temp/mode has no eligible online targets */
+function offlineBulkToastMessage(
+  units: ACUnit[],
+  skipSuperlock: boolean,
+  action: 'power' | 'temperature' | 'mode' | 'fan'
+): string {
+  const online = units.filter(isDeviceOnline);
+  if (online.length === 0) {
+    return units.length <= 1 ? 'Device is offline' : 'All devices are offline';
+  }
+  const onlySuper =
+    skipSuperlock &&
+    online.length > 0 &&
+    online.every((u) => u.eventLocked);
+  if (onlySuper) return 'Super-locked devices were skipped';
+  if (action === 'temperature') return 'No online devices available to set temperature';
+  if (action === 'mode') return 'No online devices available for mode control';
+  if (action === 'fan') return 'No online devices available for fan control';
+  return 'No online devices available to control';
+}
+
 interface DashboardProps {
   units: ACUnit[];
   role: Role;
@@ -429,15 +450,8 @@ export function Dashboard({
     ) => {
       const targets = filterPowerTempTargets(units, skipSuperlock);
       if (targets.length === 0) {
-        const online = units.filter(isDeviceOnline);
-        const onlySuper =
-          skipSuperlock &&
-          online.length > 0 &&
-          online.every((u) => u.eventLocked);
         showBulkToast(
-          onlySuper
-            ? 'Super-locked devices were skipped'
-            : 'No online devices available to control',
+          offlineBulkToastMessage(units, skipSuperlock, 'power'),
           'error'
         );
         return;
@@ -481,15 +495,8 @@ export function Dashboard({
       const clamped = Math.max(TEMP_MIN, Math.min(TEMP_MAX, Math.round(temperature)));
       const targets = filterPowerTempTargets(units, skipSuperlock);
       if (targets.length === 0) {
-        const online = units.filter(isDeviceOnline);
-        const onlySuper =
-          skipSuperlock &&
-          online.length > 0 &&
-          online.every((u) => u.eventLocked);
         showBulkToast(
-          onlySuper
-            ? 'Super-locked devices were skipped'
-            : 'No online devices available to set temperature',
+          offlineBulkToastMessage(units, skipSuperlock, 'temperature'),
           'error'
         );
         return;
@@ -500,7 +507,7 @@ export function Dashboard({
         ignoreAllTargets,
         onNeedConfirm: (pending) => setEventOverridePending(pending),
         apply: async () => {
-          // Optimistic local update while ESP confirms over socket
+          // Optimistic local update while ESP confirms over socket (online only)
           targets.forEach((u) => {
             if (onUpdateDevice) onUpdateDevice(u.id, { targetTemp: clamped, currentTemp: clamped });
             else {
@@ -570,6 +577,13 @@ export function Dashboard({
       ignoreAllTargets = true
     ) => {
       if (units.length === 0) return;
+      if (filterPowerTempTargets(units, skipSuperlock).length === 0) {
+        showBulkToast(
+          offlineBulkToastMessage(units, skipSuperlock, 'temperature'),
+          'error'
+        );
+        return;
+      }
       const current = resolveDisplayTemp(units, scopeKey);
 
       // Mixed → first snap UI to eco 24; further +/- (or wait 2s at 24) apply via debounce
@@ -595,7 +609,7 @@ export function Dashboard({
         ignoreAllTargets
       );
     },
-    [resolveDisplayTemp, scheduleBulkTemperature]
+    [resolveDisplayTemp, scheduleBulkTemperature, showBulkToast]
   );
 
   const handleScopeTempSet = useCallback(
@@ -607,6 +621,13 @@ export function Dashboard({
       ignoreAllTargets = true
     ) => {
       if (units.length === 0) return;
+      if (filterPowerTempTargets(units, skipSuperlock).length === 0) {
+        showBulkToast(
+          offlineBulkToastMessage(units, skipSuperlock, 'temperature'),
+          'error'
+        );
+        return;
+      }
       const clamped = Math.max(TEMP_MIN, Math.min(TEMP_MAX, Math.round(temperature)));
       setDraftTemps((prev) => ({ ...prev, [scopeKey]: clamped }));
       scheduleBulkTemperature(
@@ -617,7 +638,7 @@ export function Dashboard({
         ignoreAllTargets
       );
     },
-    [scheduleBulkTemperature]
+    [scheduleBulkTemperature, showBulkToast]
   );
 
   const handleScopeEco = useCallback(
@@ -628,6 +649,13 @@ export function Dashboard({
       ignoreAllTargets = true
     ) => {
       if (units.length === 0) return;
+      if (filterPowerTempTargets(units, skipSuperlock).length === 0) {
+        showBulkToast(
+          offlineBulkToastMessage(units, skipSuperlock, 'temperature'),
+          'error'
+        );
+        return;
+      }
       const existing = tempDebounceTimers.current[scopeKey];
       if (existing) {
         window.clearTimeout(existing);
@@ -647,7 +675,7 @@ export function Dashboard({
         });
       });
     },
-    [applyBulkTemperature]
+    [applyBulkTemperature, showBulkToast]
   );
 
   // Active Control Frame — skip superlock for org/venue; allow direct control of a single device
@@ -823,7 +851,10 @@ export function Dashboard({
     const mode = modeLabel.toLowerCase() as 'cool' | 'heat' | 'dry' | 'fan' | 'auto';
     const targets = filterPowerTempTargets(selectedUnits, skipSuperlockForFrame);
     if (targets.length === 0) {
-      showBulkToast('No online devices available for mode control', 'error');
+      showBulkToast(
+        offlineBulkToastMessage(selectedUnits, skipSuperlockForFrame, 'mode'),
+        'error'
+      );
       return;
     }
 
@@ -879,7 +910,10 @@ export function Dashboard({
       | 'turbo';
     const targets = filterPowerTempTargets(selectedUnits, skipSuperlockForFrame);
     if (targets.length === 0) {
-      showBulkToast('No online devices available for fan control', 'error');
+      showBulkToast(
+        offlineBulkToastMessage(selectedUnits, skipSuperlockForFrame, 'fan'),
+        'error'
+      );
       return;
     }
 
@@ -1126,7 +1160,7 @@ export function Dashboard({
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white px-5 py-4 rounded-3xl border border-slate-100 shadow-sm gap-4">
           <div className="min-w-0 flex-1">
             <span className="text-[10px] font-black uppercase text-blue-600 tracking-widest block mb-0.5">Campus Air Control</span>
-            <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2 min-w-0">
+            <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2 min-w-0 flex-wrap">
               {globalUnitId ? (
                 <>
                   <MonitorSmartphone className="w-6 h-6 text-blue-600 shrink-0" />
@@ -1140,21 +1174,24 @@ export function Dashboard({
               ) : (
                 <>
                   <Building2 className="w-6 h-6 text-blue-600 shrink-0" />
-                  <span className="truncate">Organization: {activeOrg.name}</span>
+                  <span className="shrink-0">Organization:</span>
+                  {orgs.length > 1 ? (
+                    <div className="min-w-0 max-w-[14rem] sm:max-w-[16rem] flex-1">
+                      <CustomDropdown
+                        icon={Building2}
+                        value={activeOrg.id || ''}
+                        onChange={handleOrgChange}
+                        placeholder="Select organization"
+                        options={orgs.map((org) => ({ value: org.id, label: org.name }))}
+                        triggerClassName="!py-1.5 !text-sm !font-bold"
+                      />
+                    </div>
+                  ) : (
+                    <span className="truncate text-blue-600">{activeOrg.name}</span>
+                  )}
                 </>
               )}
             </h1>
-            {orgs.length > 1 && !globalUnitId && (
-              <div className="mt-3 max-w-xs">
-                <CustomDropdown
-                  icon={Building2}
-                  value={activeOrg.id || ''}
-                  onChange={handleOrgChange}
-                  placeholder="Select organization"
-                  options={orgs.map((org) => ({ value: org.id, label: org.name }))}
-                />
-              </div>
-            )}
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             {/* Grid Density Selector */}
@@ -2005,13 +2042,13 @@ export function Dashboard({
                   return (
                     <button
                       type="button"
-                      disabled={bulkPowerPending || onlineSelected.length === 0}
+                      disabled={bulkPowerPending}
                       onClick={() => handleBulkPowerToggle(!isBulkOn)}
                       className={`w-full py-3 px-1.5 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all duration-300 flex justify-center items-center gap-1 shadow-sm border cursor-pointer h-11 ${
                         isBulkOn
                           ? 'bg-emerald-500 hover:bg-emerald-600 border-emerald-500 text-white shadow-emerald-500/10'
                           : 'bg-red-500 hover:bg-red-600 border-red-500 text-white shadow-red-500/10'
-                      } ${bulkPowerPending || onlineSelected.length === 0 ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      } ${bulkPowerPending || onlineSelected.length === 0 ? 'opacity-60' : ''}`}
                     >
                       <Power className="w-3.5 h-3.5 shrink-0" />
                       <span className="truncate">{isBulkOn ? 'ON' : 'OFF'}</span>
@@ -2274,18 +2311,32 @@ export function Dashboard({
           <div className="flex lg:hidden flex-col h-full w-full bg-[#f3f4f6] text-slate-800 select-none overflow-hidden justify-between p-4 pb-1">
             
             {/* Top Entity Name */}
-            <div className="text-center text-[11px] font-extrabold uppercase tracking-widest text-slate-400 mt-1 mb-2 shrink-0">
+            <div className="text-center text-[11px] font-extrabold uppercase tracking-widest text-slate-400 mt-1 mb-2 shrink-0 flex items-center justify-center gap-1.5 min-w-0 px-1">
               {globalUnitId ? (
                 <>
-                  Device: <span className="text-blue-600">{selectedUnits[0]?.name || 'Device'}</span>
+                  Device: <span className="text-blue-600 truncate">{selectedUnits[0]?.name || 'Device'}</span>
                 </>
               ) : globalVenueId ? (
                 <>
-                  Venue: <span className="text-blue-600">{orgVenues.find(v => v.id === globalVenueId)?.name || 'Venue'}</span>
+                  Venue: <span className="text-blue-600 truncate">{orgVenues.find(v => v.id === globalVenueId)?.name || 'Venue'}</span>
                 </>
               ) : (
                 <>
-                  Organization: <span className="text-blue-600">{activeOrg.name}</span>
+                  <span className="shrink-0">Organization:</span>
+                  {orgs.length > 1 ? (
+                    <div className="min-w-0 max-w-[10rem] normal-case tracking-normal">
+                      <CustomDropdown
+                        icon={Building2}
+                        value={activeOrg.id || ''}
+                        onChange={handleOrgChange}
+                        placeholder="Select organization"
+                        options={orgs.map((org) => ({ value: org.id, label: org.name }))}
+                        triggerClassName="!py-1 !px-2 !text-[11px] !font-extrabold !rounded-xl"
+                      />
+                    </div>
+                  ) : (
+                    <span className="text-blue-600 truncate">{activeOrg.name}</span>
+                  )}
                 </>
               )}
             </div>

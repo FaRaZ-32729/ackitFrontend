@@ -42,7 +42,7 @@ import {
 interface ACDetailProps {
   unit: ACUnit;
   role: Role;
-  /** Manager/admin always; user only with manage permission */
+  /** Whether the user can change device controls (all authenticated roles) */
   canManage?: boolean;
   onBack: () => void;
   /** Sync optimistic updates back to AppContext units */
@@ -152,8 +152,10 @@ export function ACDetail({
   );
 
   const isOnline = unit.status !== 'offline';
-  const canControl =
-    canManage && isOnline && (!unit.isLocked || isManager);
+  /** Permission + lock (offline is checked on action so we can show a message) */
+  const canAttemptControl =
+    canManage && (!unit.isLocked || isManager);
+  const canControl = canAttemptControl && isOnline;
   const canControlEvents =
     canManage && (!unit.eventLocked || isManager);
 
@@ -168,6 +170,7 @@ export function ACDetail({
 
   const requireOnline = useCallback(() => {
     if (unit.status === 'offline') {
+      setControlError('Device is offline');
       return false;
     }
     setControlError('');
@@ -293,6 +296,7 @@ export function ACDetail({
   const handleTogglePower = async () => {
     if (!canManage) return;
     if (!requireOnline()) return;
+    if (!canAttemptControl) return;
     if (powerPending) return;
 
     const nextState: 'on' | 'off' = unit.isOn ? 'off' : 'on';
@@ -325,6 +329,7 @@ export function ACDetail({
     async (temperature: number) => {
       if (!canManage) return;
       if (!requireOnline()) return;
+      if (!canAttemptControl) return;
 
       const clamped = Math.max(16, Math.min(30, temperature));
       setControlError('');
@@ -348,13 +353,13 @@ export function ACDetail({
         setControlError(message);
       }
     },
-    [canManage, patchUnit, requireOnline, unit.id]
+    [canAttemptControl, canManage, patchUnit, requireOnline, unit.id]
   );
 
   const handleTempChange = (raw: number) => {
     if (!canManage) return;
     if (!requireOnline()) return;
-    if (!canControl && unit.isLocked && !isManager) return;
+    if (!canAttemptControl) return;
 
     const clamped = Math.max(16, Math.min(30, raw));
     patchUnit({ targetTemp: clamped });
@@ -502,9 +507,11 @@ export function ACDetail({
 
   const controlsBlockedReason = !canManage
     ? 'View-only access — you cannot change this device.'
-    : unit.isLocked && !isManager
-      ? 'Device is locked.'
-      : '';
+    : !isOnline
+      ? 'Device is offline'
+      : unit.isLocked && !isManager
+        ? 'Device is locked.'
+        : '';
 
   return (
     <div className="w-full flex flex-col gap-4 sm:gap-5 md:gap-6 pb-6">
@@ -684,7 +691,7 @@ export function ACDetail({
               <button
                 type="button"
                 onClick={() => void handleTogglePower()}
-                disabled={!canControl || powerPending}
+                disabled={!canAttemptControl || powerPending}
                 title={
                   !isOnline
                     ? 'Device is offline'
@@ -699,7 +706,7 @@ export function ACDetail({
                     ? 'bg-emerald-100 text-emerald-600 shadow-[0_0_20px_rgba(16,185,129,0.18)]'
                     : 'bg-slate-100 text-slate-400'
                 } ${
-                  !canControl || powerPending
+                  !canAttemptControl || powerPending || !isOnline
                     ? 'opacity-50 cursor-not-allowed'
                     : 'hover:scale-105'
                 }`}
@@ -759,7 +766,7 @@ export function ACDetail({
                   onChange={(e) =>
                     handleTempChange(parseInt(e.target.value, 10))
                   }
-                  disabled={!canControl}
+                  disabled={!canAttemptControl}
                   className={`w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 ${
                     !canControl ? 'opacity-50 cursor-not-allowed' : ''
                   }`}

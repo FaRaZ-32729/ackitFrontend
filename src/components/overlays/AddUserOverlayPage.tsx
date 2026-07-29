@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { useAppContext } from '../../context/AppContext';
-import { CustomDropdown } from '../ui/CustomDropdown';
 import { MultiSelectDropdown } from '../ui/MultiSelectDropdown';
 
 interface AddUserOverlayPageProps {
@@ -24,7 +23,6 @@ export function AddUserOverlayPage({ onClose }: AddUserOverlayPageProps) {
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [permission, setPermission] = useState<'view' | 'manage'>('view');
   const [organizationIds, setOrganizationIds] = useState<string[]>([]);
   const [assignedVenueIds, setAssignedVenueIds] = useState<string[]>([]);
   
@@ -68,7 +66,6 @@ export function AddUserOverlayPage({ onClose }: AddUserOverlayPageProps) {
         email: email.trim(),
         organizations: organizationIds,
         venues: assignedVenueIds,
-        permission,
       });
       setIsSuccess(true);
       window.setTimeout(() => {
@@ -190,21 +187,6 @@ export function AddUserOverlayPage({ onClose }: AddUserOverlayPageProps) {
                   icon={Building2}
                   placeholder="Select organizations…"
                   options={orgs.map((org) => ({ value: org.id, label: org.name }))}
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="space-y-1.5 min-w-0">
-                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                  Permission
-                </label>
-                <CustomDropdown
-                  value={permission}
-                  onChange={(v) => setPermission(v as 'view' | 'manage')}
-                  options={[
-                    { value: 'view', label: 'View' },
-                    { value: 'manage', label: 'Manage' },
-                  ]}
                   disabled={isSubmitting}
                 />
               </div>
