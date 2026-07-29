@@ -33,7 +33,6 @@ export function AddDeviceOverlayPage({ onClose }: AddDeviceOverlayPageProps) {
   const [venueId, setVenueId] = useState('');
   const [brandId, setBrandId] = useState('');
   const [capacity, setCapacity] = useState('1.5');
-  const [voltage, setVoltage] = useState('230');
   const [availableVenues, setAvailableVenues] = useState<Venue[]>([]);
   const [brandOptions, setBrandOptions] = useState<DeviceBrandOption[]>([]);
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
@@ -113,7 +112,6 @@ export function AddDeviceOverlayPage({ onClose }: AddDeviceOverlayPageProps) {
         venue: String(venueId),
         brand: String(brandId),
         capacity: Number(capacity),
-        voltage: Number(voltage) || 230,
       });
       setUnits((prev) => [...prev, newDevice]);
       setIsSuccess(true);
@@ -290,22 +288,6 @@ export function AddDeviceOverlayPage({ onClose }: AddDeviceOverlayPageProps) {
                     ]}
                   />
                 </div>
-              </div>
-
-              <div className="space-y-1.5 min-w-0">
-                <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                  Line Voltage (V)
-                </label>
-                <input
-                  type="number"
-                  min={100}
-                  max={400}
-                  step={1}
-                  value={voltage}
-                  onChange={(e) => setVoltage(e.target.value)}
-                  className="w-full p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-xs font-bold transition-all text-slate-800"
-                  placeholder="230"
-                />
               </div>
 
             </div>

@@ -124,7 +124,6 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
   const [newDeviceBrand, setNewDeviceBrand] = useState('');
   const [newDeviceEnergySensor, setNewDeviceEnergySensor] = useState(true);
   const [newDeviceCapacity, setNewDeviceCapacity] = useState('1.5');
-  const [newDeviceVoltage, setNewDeviceVoltage] = useState('230');
   const [newDeviceVenues, setNewDeviceVenues] = useState<Venue[]>([]);
   const [newDeviceBrands, setNewDeviceBrands] = useState<DeviceBrandOption[]>([]);
   const [newDeviceError, setNewDeviceError] = useState('');
@@ -516,12 +515,10 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
         venue: String(newDeviceVenueId),
         brand: String(newDeviceBrand),
         capacity: Number(newDeviceCapacity),
-        voltage: Number(newDeviceVoltage) || 230,
       });
       onAddDevice(device);
       setShowAddDevice(false);
       setNewDeviceName('');
-      setNewDeviceVoltage('230');
       showDeviceToast('Device created successfully', 'success');
     } catch (error: any) {
       const status = error?.response?.status;
@@ -569,7 +566,6 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
         venue: editingDevice.venueId,
         brand: editingDevice.brandId,
         capacity: parseCapacityTon(editingDevice.capacityTon),
-        voltage: Number(editingDevice.voltage) || 230,
       });
       // Preserve client-only fields (events, live toggles) where possible
       const merged: ACUnit = {
@@ -582,7 +578,7 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
         targetTemp: editingDevice.targetTemp,
         currentTemp: editingDevice.currentTemp,
         powerConsumption: updated.powerConsumption ?? editingDevice.powerConsumption,
-        voltage: updated.voltage ?? editingDevice.voltage,
+        voltage: updated.voltage ?? editingDevice.voltage ?? 230,
         current: updated.current ?? editingDevice.current,
       };
       onUpdateDevice(merged.id, merged);
@@ -729,7 +725,7 @@ function useManagerWorkspaceValue(props: ManagerWorkspaceProps) {
     showAddDevice, setShowAddDevice, newDeviceName, setNewDeviceName,
     newDeviceOrgId, setNewDeviceOrgId, newDeviceVenueId, setNewDeviceVenueId,
     newDeviceBrand, setNewDeviceBrand, newDeviceEnergySensor, setNewDeviceEnergySensor,
-    newDeviceCapacity, setNewDeviceCapacity, newDeviceVoltage, setNewDeviceVoltage,
+    newDeviceCapacity, setNewDeviceCapacity,
     newDeviceVenues, newDeviceBrands,
     newDeviceError, isAddingDevice, deviceToast, setDeviceToast, showToast, showDeviceToast,
     editDeviceVenues, editDeviceBrands, editDeviceError, isUpdatingDevice,
