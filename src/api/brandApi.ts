@@ -181,6 +181,33 @@ export async function getAllBrands(): Promise<ApiBrand[]> {
   return data.brands || [];
 }
 
+export async function getBrandSession(configureId: string): Promise<{
+  configureId: string;
+  deviceConnected: boolean;
+  pendingField: { group: string; key: string } | null;
+  signals: BrandSignalsPayload;
+}> {
+  const { data } = await api.get<{
+    success: boolean;
+    configureId: string;
+    deviceConnected: boolean;
+    pendingField: { group: string; key: string } | null;
+    signals: BrandSignalsPayload;
+    message?: string;
+  }>(`/api/brand/session/${encodeURIComponent(configureId)}`);
+
+  if (!data.success) {
+    throw new Error(data.message || 'Failed to load configure session');
+  }
+
+  return {
+    configureId: data.configureId,
+    deviceConnected: Boolean(data.deviceConnected),
+    pendingField: data.pendingField || null,
+    signals: data.signals,
+  };
+}
+
 export async function deleteBrand(id: string) {
   await api.delete(`/api/brand/${id}`);
 }

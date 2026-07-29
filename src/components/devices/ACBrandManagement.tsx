@@ -11,6 +11,7 @@ import {
   saveBrand,
   applyBrandCommand,
   getAllBrands,
+  getBrandSession,
   deleteBrand,
   mapApiBrandToSignals,
   type ApiBrand,
@@ -175,10 +176,41 @@ export function ACBrandManagement() {
 
   // Socket listeners for active configure session
   useEffect(() => {
-    if (!formConfigureId) return;
+    if (!formConfigureId || editingBrandId) return;
 
     const socket = getBrandSocket();
     joinBrandConfigureRoom(formConfigureId);
+
+    const syncFromSession = async () => {
+      try {
+        const session = await getBrandSession(formConfigureId);
+        setIsDeviceConnected(Boolean(session.deviceConnected));
+        if (session.signals) {
+          setSignals({
+            ...emptySignals(),
+            ...session.signals,
+            temperatures: {
+              ...emptyTemperatureMap(),
+              ...(session.signals.temperatures || {}),
+            },
+            fanSpeeds: {
+              ...emptySignals().fanSpeeds,
+              ...(session.signals.fanSpeeds || {}),
+            },
+            modes: {
+              ...emptySignals().modes,
+              ...(session.signals.modes || {}),
+            },
+          });
+        }
+        // If backend already consumed pending field, clear local training highlight
+        if (!session.pendingField) {
+          setTrainingTarget(null);
+        }
+      } catch {
+        // Session may expire; keep local UI
+      }
+    };
 
     const onDeviceConnected = (payload: { configureId: string }) => {
       if (payload.configureId !== formConfigureId) return;
@@ -195,6 +227,8 @@ export function ACBrandManagement() {
       setSignals((prev) => applyCapturedField(prev, payload.field, payload.value));
       setTrainingTarget(null);
       showToast(`IR pulse saved for ${payload.field.group}.${payload.field.key}`, 'success');
+      // Re-sync from API in case socket payload shape differs
+      void syncFromSession();
     };
 
     const onIrIgnored = (payload: { configureId: string; reason?: string }) => {
@@ -206,13 +240,20 @@ export function ACBrandManagement() {
     socket.on('brand:ir-captured', onIrCaptured);
     socket.on('brand:ir-ignored', onIrIgnored);
 
+    // Initial + periodic sync so modes/fans update even if a socket event is missed
+    void syncFromSession();
+    const pollId = window.setInterval(() => {
+      void syncFromSession();
+    }, 2000);
+
     return () => {
+      window.clearInterval(pollId);
       socket.off('brand:device-connected', onDeviceConnected);
       socket.off('brand:ir-captured', onIrCaptured);
       socket.off('brand:ir-ignored', onIrIgnored);
       leaveBrandConfigureRoom(formConfigureId);
     };
-  }, [formConfigureId, showToast]);
+  }, [formConfigureId, editingBrandId, showToast]);
 
   const handleConfigureDevice = async () => {
     try {
@@ -225,6 +266,7 @@ export function ACBrandManagement() {
       setFormConfigureId(configureId);
       setIsDeviceConnected(false);
       setSignals(emptySignals());
+      setTrainingTarget(null);
       joinBrandConfigureRoom(configureId);
       showToast(`Pairing code ${configureId} ready — flash/use it on the ESP`, 'info');
     } catch (error: any) {
@@ -311,6 +353,30 @@ export function ACBrandManagement() {
         label: label || `${type} Command`,
         command,
       });
+      // Pull latest draft so already-mapped buttons stay in sync
+      try {
+        const session = await getBrandSession(formConfigureId);
+        if (session.signals) {
+          setSignals({
+            ...emptySignals(),
+            ...session.signals,
+            temperatures: {
+              ...emptyTemperatureMap(),
+              ...(session.signals.temperatures || {}),
+            },
+            fanSpeeds: {
+              ...emptySignals().fanSpeeds,
+              ...(session.signals.fanSpeeds || {}),
+            },
+            modes: {
+              ...emptySignals().modes,
+              ...(session.signals.modes || {}),
+            },
+          });
+        }
+      } catch {
+        // ignore sync errors while arming
+      }
     } catch (error: any) {
       showToast(error?.response?.data?.message || error?.message || 'Could not arm capture', 'error');
     }
