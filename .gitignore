@@ -1,3 +1,6 @@
 node_modules
 .env
 .env.example
+
+# Large landing videos — keep local, do not commit
+public/landing/video/

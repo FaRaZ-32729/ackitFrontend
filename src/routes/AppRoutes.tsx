@@ -1,6 +1,5 @@
 import React from 'react';
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useAppContext } from '../context/AppContext';
+import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { LoginPage } from '../pages/LoginPage';
 import { RegisterPage } from '../pages/RegisterPage';
 import { VerifyOtpPage } from '../pages/VerifyOtpPage';
@@ -14,23 +13,12 @@ import { ConsoleLayout } from '../components/layout/ConsoleLayout';
 import { AdminPage } from '../admin/pages/AdminPage';
 import { ManagerPage } from '../manager/pages/ManagerPage';
 import { UserPage } from '../user/pages/UserPage';
-
-function HomeRedirect() {
-  const { role, hasActiveSubscription, authLoading } = useAppContext();
-  if (authLoading) return null;
-  if (!role) {
-    return <Navigate to="/login" replace />;
-  }
-  if (role === 'manager' && !hasActiveSubscription) {
-    return <Navigate to="/subscribe" replace />;
-  }
-  return <Navigate to={role === 'manager' ? '/manager/dashboard' : `/${role}`} replace />;
-}
+import { LandingPage } from '../components/landing/LandingPage';
 
 /**
  * App route map
  *
- * Public:  /login, /register
+ * Public:  / (landing), /login, /register
  * Auth:    /subscribe (manager plan gate)
  * Console: /admin/:tab | /manager/:tab | /user/:tab  (wrapped in ConsoleLayout)
  * Device:  /device/:id
@@ -39,6 +27,7 @@ export function AppRoutes() {
   return (
     <Router>
       <Routes>
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/verify-otp" element={<VerifyOtpPage />} />
@@ -60,7 +49,6 @@ export function AppRoutes() {
 
         <Route path="/device/:id" element={<DevicePage />} />
 
-        <Route path="/" element={<HomeRedirect />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Router>

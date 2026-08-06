@@ -1,0 +1,303 @@
+/* Minimal helpers so ac-kit premium CSS works without Bootstrap */
+.ac-kit-page .container {
+  width: 100%;
+  max-width: 1140px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.ac-kit-page .skip-link {
+  position: absolute;
+  left: -9999px;
+}
+.ac-kit-page .skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+  z-index: 9999;
+  background: #fff;
+  padding: 0.5rem 1rem;
+}
+
+/* Header / nav layout (replaces Bootstrap utilities) */
+.ac-kit-page .header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 997;
+  display: flex;
+  align-items: center;
+}
+
+.ac-kit-page .header .container-fluid {
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.ac-kit-page .header .logo {
+  display: flex;
+  align-items: center;
+  margin-right: auto;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.ac-kit-page .header .logo img {
+  display: block;
+  height: 36px;
+  width: auto;
+  max-width: 160px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.ac-kit-page .header .navmenu ul {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ac-kit-page .header .navmenu a {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ac-kit-page .header .btn-getstarted {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  color: #fff !important;
+  text-decoration: none;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+/* Lucide SVGs in icon slots sized like bootstrap-icons */
+.ac-kit-page svg.ack-ico {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  vertical-align: -0.125em;
+}
+
+.ack-sidenav a svg.ack-ico {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.ack-mobile-dock a svg.ack-ico {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.ack-vid-item__thumb svg.ack-ico {
+  width: 1rem;
+  height: 1rem;
+}
+
+.ack-alert-tile__icon svg.ack-ico {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.ack-btn svg.ack-ico {
+  width: 1rem;
+  height: 1rem;
+}
+
+.ack-hero__label svg.ack-ico,
+.ack-hero__strip span svg.ack-ico {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.ack-monitor__mute svg.ack-ico {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.ack-plan ul li svg.ack-ico,
+.ack-industry__overlay ul li svg.ack-ico {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+/* Footer (simplified, no Bootstrap grid) */
+.ac-kit-page .footer {
+  background: var(--ack-navy);
+  color: #94a3b8;
+  padding: 0 0 1.5rem;
+  margin-top: 0;
+}
+
+.ac-kit-page .footer a {
+  color: #cbd5e1;
+  text-decoration: none;
+}
+
+.ac-kit-page .footer a:hover {
+  color: var(--ack-orange);
+}
+
+.ac-kit-page .footer .footer-newsletter {
+  background: var(--ack-navy-soft);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  padding: 2.5rem 0;
+  text-align: center;
+}
+
+.ac-kit-page .footer .footer-newsletter h4 {
+  color: #fff;
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+}
+
+.ac-kit-page .footer .footer-newsletter p {
+  margin: 0 0 1.25rem;
+  font-size: 0.9375rem;
+}
+
+.ac-kit-page .footer .newsletter-form {
+  display: flex;
+  max-width: 420px;
+  margin: 0 auto;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: #0f172a;
+}
+
+.ac-kit-page .footer .newsletter-form input[type='email'] {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: #fff;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.ac-kit-page .footer .newsletter-form button {
+  border: none;
+  background: var(--ack-orange);
+  color: #fff;
+  font-weight: 600;
+  padding: 0.75rem 1.25rem;
+  cursor: pointer;
+  font-size: 0.8125rem;
+}
+
+.ac-kit-page .footer .newsletter-form button:hover {
+  background: var(--ack-orange-dark);
+}
+
+.ac-kit-page .footer .footer-top {
+  padding-top: 2.5rem;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 2rem;
+}
+
+.ac-kit-page .footer .sitename {
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.ac-kit-page .footer .footer-contact p {
+  margin: 0.25rem 0;
+  font-size: 0.875rem;
+}
+
+.ac-kit-page .footer h4 {
+  color: #fff;
+  font-size: 0.9375rem;
+  margin: 0 0 1rem;
+}
+
+.ac-kit-page .footer .footer-links ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ac-kit-page .footer .footer-links ul li {
+  margin: 0.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+}
+
+.ac-kit-page .footer .copyright {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+  text-align: center;
+  font-size: 0.8125rem;
+}
+
+.ac-kit-page .scroll-top {
+  position: fixed;
+  right: 16px;
+  bottom: 24px;
+  z-index: 9990;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ack-navy);
+  color: #fff;
+  border-radius: 4px;
+  text-decoration: none;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.35);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+}
+
+.ac-kit-page .scroll-top.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.ac-kit-page .seo-breadcrumbs {
+  padding: calc(72px + 0.75rem) 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--ack-muted);
+}
+
+.ac-kit-page .seo-breadcrumbs a {
+  color: var(--ack-muted);
+  text-decoration: none;
+}
+
+.ac-kit-page .seo-breadcrumbs a:hover {
+  color: var(--ack-orange);
+}
+
+.ac-kit-page .seo-breadcrumbs .bc-sep {
+  margin: 0 0.4rem;
+  opacity: 0.5;
+}
+
+@media (max-width: 767px) {
+  .ac-kit-page .footer .footer-top {
+    grid-template-columns: 1fr;
+  }
+}
