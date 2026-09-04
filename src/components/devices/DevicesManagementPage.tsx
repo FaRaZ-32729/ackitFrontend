@@ -386,15 +386,48 @@ export function DevicesManagementPage({
     prevShowAddDevice.current = showAddDevice;
   }, [showAddDevice, selectedVenueId, orgVenues]);
 
-  // Kit agent device CRUD → refresh the visible device list
+  // Kit agent device CRUD / control / events → refresh the visible device list + schedules
   useEffect(() => {
     const onAgentData = (event: Event) => {
       const detail = (event as CustomEvent).detail as
         | { scopes?: string[] }
         | undefined;
-      if (!detail?.scopes?.includes('devices')) return;
+      const scopes = detail?.scopes || [];
+      const touchDevices = scopes.includes('devices');
+      const touchEvents = scopes.includes('events');
+      if (!touchDevices && !touchEvents) return;
       if (!selectedVenueId) return;
       if (selectedVenueId === ALL_VENUES_ID && loadingVenues) return;
+
+      const reloadEventsOnly = () => {
+        if (!selectedOrgId) return;
+        listScheduleEvents({
+          organizationId: selectedOrgId,
+          scope: 'device',
+        })
+          .then((events) => {
+            const byDevice = new Map<string, ACEvent[]>();
+            for (const ev of events) {
+              if (!ev.deviceId) continue;
+              const mapped = scheduleEventToACEvent(ev);
+              const list = byDevice.get(ev.deviceId) || [];
+              list.push(mapped);
+              byDevice.set(ev.deviceId, list);
+            }
+            setVenueDevices((prev) =>
+              prev.map((u) => ({
+                ...u,
+                events: byDevice.get(u.id) || [],
+              }))
+            );
+          })
+          .catch(() => {});
+      };
+
+      if (!touchDevices && touchEvents) {
+        reloadEventsOnly();
+        return;
+      }
 
       fetchDevicesForSelection(selectedVenueId, orgVenues)
         .then((list) => {
@@ -420,6 +453,7 @@ export function DevicesManagementPage({
               return Array.from(byId.values());
             });
           }
+          if (touchEvents) reloadEventsOnly();
         })
         .catch(() => {});
     };
@@ -427,7 +461,7 @@ export function DevicesManagementPage({
     window.addEventListener('ackit:agent-data-changed', onAgentData);
     return () =>
       window.removeEventListener('ackit:agent-data-changed', onAgentData);
-  }, [selectedVenueId, orgVenues, loadingVenues, setUnits]);
+  }, [selectedVenueId, selectedOrgId, orgVenues, loadingVenues, setUnits]);
 
   // Keep local list in sync with add-event / delete / update from shared modals
   useEffect(() => {

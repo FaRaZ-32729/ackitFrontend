@@ -1,6 +1,6 @@
 /**
  * Refetch AppContext lists after agent CRUD (same data manual forms update).
- * scopes: organizations | venues | devices | users
+ * scopes: organizations | venues | devices | users | events
  *
  * Handlers are registered by AppProvider so this stays Redux-free.
  */

@@ -220,6 +220,41 @@ export function ACDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only reload when device identity changes
   }, [unit.id, unit.organizationId]);
 
+  // Kit agent create/toggle/delete device event → refresh this device's schedules
+  useEffect(() => {
+    const onAgentData = (event: Event) => {
+      const detail = (event as CustomEvent).detail as
+        | { scopes?: string[]; hints?: { venueIds?: string[] } }
+        | undefined;
+      const scopes = detail?.scopes || [];
+      if (!scopes.includes('events') && !scopes.includes('devices')) return;
+      if (!unit.id || !unit.organizationId) return;
+
+      void listScheduleEvents({
+        organizationId: unit.organizationId,
+        deviceId: unit.id,
+        scope: 'device',
+      })
+        .then((list) => {
+          const mapped = list
+            .filter(
+              (ev) =>
+                ev.scope === 'device' &&
+                String(ev.deviceId || '') === String(unit.id)
+            )
+            .map(scheduleEventToACEvent);
+          setEvents(mapped);
+          patchUnit({ events: mapped });
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener('ackit:agent-data-changed', onAgentData);
+    return () =>
+      window.removeEventListener('ackit:agent-data-changed', onAgentData);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- patchUnit identity not needed
+  }, [unit.id, unit.organizationId]);
+
   // Energy chart for this device
   useEffect(() => {
     let cancelled = false;
