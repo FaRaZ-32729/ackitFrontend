@@ -265,6 +265,37 @@ export function Dashboard({
     };
   }, [globalOrgId, selectedVenueId]);
 
+  // Kit agent org/venue bulk + events → refresh EVENTS panel (devices refresh via AppContext)
+  useEffect(() => {
+    const onAgentData = (event: Event) => {
+      const detail = (event as CustomEvent).detail as
+        | { scopes?: string[] }
+        | undefined;
+      const scopes = detail?.scopes || [];
+      if (!scopes.includes('events') && !scopes.includes('devices')) return;
+      if (!globalOrgId) return;
+
+      const params =
+        selectedVenueId === 'all'
+          ? { organizationId: globalOrgId, scope: 'organization' as const }
+          : {
+              organizationId: globalOrgId,
+              venueId: selectedVenueId,
+              scope: 'venue' as const,
+            };
+
+      listScheduleEvents(params)
+        .then((events) => {
+          setScopeEvents(events.map(scheduleEventToACEvent));
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener('ackit:agent-data-changed', onAgentData);
+    return () =>
+      window.removeEventListener('ackit:agent-data-changed', onAgentData);
+  }, [globalOrgId, selectedVenueId]);
+
   // Remove one-time / deleted events from the EVENTS panel live
   useEffect(() => {
     const socket = getAppSocket();
