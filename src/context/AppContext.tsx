@@ -47,6 +47,8 @@ import {
 } from '../api/userApi';
 import axios from 'axios';
 import { getAppSocket } from '../api/brandSocket';
+import { getDevicesByVenue } from '../api/deviceApi';
+import { registerAgentDataRefreshHandler } from '../utils/agentDataRefresh';
 
 const USER_KEY = 'iotify_user';
 
@@ -667,6 +669,82 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, [persistSession, hydrateWorkspaceFromMe]);
+
+  // Kit agent mutations → refetch lists (Create User / Org / Venue / Device)
+  useEffect(() => {
+    return registerAgentDataRefreshHandler(
+      ({
+        scopes,
+        hints,
+      }: {
+        scopes?: string[];
+        hints?: { venueIds?: string[] };
+      }) => {
+        if (!user?.id) return;
+        if (role === 'manager') {
+          if (scopes?.includes('users')) {
+            void fetchMyUsers().catch(() => {});
+          }
+          if (scopes?.includes('organizations')) {
+            void fetchMyOrganizations().catch(() => {});
+          }
+          if (scopes?.includes('venues')) {
+            void fetchMyVenues().catch(() => {});
+          }
+        }
+
+        if (!scopes?.includes('devices')) return;
+        if (role !== 'manager' && role !== 'user') return;
+
+        const hintVenueIds = Array.isArray(hints?.venueIds)
+          ? hints!.venueIds!.map(String).filter(Boolean)
+          : [];
+        const venueIds =
+          hintVenueIds.length > 0
+            ? hintVenueIds
+            : venues.map((v) => v.id).filter(Boolean);
+        if (!venueIds.length) return;
+
+        void (async () => {
+          try {
+            const lists = await Promise.all(
+              venueIds.map((id) =>
+                getDevicesByVenue(id).catch(() => [] as ACUnit[])
+              )
+            );
+            const next = lists.flat();
+            const venueIdSet = new Set(venueIds);
+            setUnits((prev) => {
+              const real = prev.filter((u) =>
+                /^[a-fA-F0-9]{24}$/.test(u.id)
+              );
+              const byId = new Map(real.map((u) => [u.id, u]));
+              for (const [id, unit] of [...byId.entries()]) {
+                if (venueIdSet.has(unit.venueId)) byId.delete(id);
+              }
+              for (const device of next) {
+                const existing = byId.get(device.id);
+                byId.set(
+                  device.id,
+                  existing ? { ...existing, ...device } : device
+                );
+              }
+              return Array.from(byId.values());
+            });
+          } catch {
+            /* ignore refresh errors */
+          }
+        })();
+      }
+    );
+  }, [
+    role,
+    user?.id,
+    venues,
+    fetchMyUsers,
+    fetchMyOrganizations,
+    fetchMyVenues,
+  ]);
 
   useEffect(() => {
     if (role) localStorage.setItem('iotify_role', role);

@@ -386,6 +386,49 @@ export function DevicesManagementPage({
     prevShowAddDevice.current = showAddDevice;
   }, [showAddDevice, selectedVenueId, orgVenues]);
 
+  // Kit agent device CRUD → refresh the visible device list
+  useEffect(() => {
+    const onAgentData = (event: Event) => {
+      const detail = (event as CustomEvent).detail as
+        | { scopes?: string[] }
+        | undefined;
+      if (!detail?.scopes?.includes('devices')) return;
+      if (!selectedVenueId) return;
+      if (selectedVenueId === ALL_VENUES_ID && loadingVenues) return;
+
+      fetchDevicesForSelection(selectedVenueId, orgVenues)
+        .then((list) => {
+          setVenueDevices(list);
+          if (setUnits) {
+            setUnits((prev) => {
+              const real = prev.filter((u) => /^[a-fA-F0-9]{24}$/.test(u.id));
+              const byId = new Map(real.map((u) => [u.id, u]));
+              if (selectedVenueId === ALL_VENUES_ID) {
+                const orgVenueIds = new Set(orgVenues.map((v) => v.id));
+                for (const [id, unit] of [...byId.entries()]) {
+                  if (orgVenueIds.has(unit.venueId)) byId.delete(id);
+                }
+              } else {
+                for (const [id, unit] of [...byId.entries()]) {
+                  if (unit.venueId === selectedVenueId) byId.delete(id);
+                }
+              }
+              list.forEach((device) => {
+                const existing = byId.get(device.id);
+                byId.set(device.id, existing ? { ...existing, ...device } : device);
+              });
+              return Array.from(byId.values());
+            });
+          }
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener('ackit:agent-data-changed', onAgentData);
+    return () =>
+      window.removeEventListener('ackit:agent-data-changed', onAgentData);
+  }, [selectedVenueId, orgVenues, loadingVenues, setUnits]);
+
   // Keep local list in sync with add-event / delete / update from shared modals
   useEffect(() => {
     const orgVenueIds = new Set(orgVenues.map((v) => v.id));

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAppContext } from '../../context/AppContext';
+import HelpChatWidget from '../help/HelpChatWidget';
 
 export function ConsoleLayout() {
   const { 
@@ -303,6 +304,8 @@ export function ConsoleLayout() {
           </div>
         </nav>
       )}
+
+      <HelpChatWidget />
     </div>
   );
 }
