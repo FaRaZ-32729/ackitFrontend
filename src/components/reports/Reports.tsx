@@ -331,7 +331,7 @@ export function Reports({
 
   return (
     <div className="flex-1 flex flex-col min-h-0 h-full overflow-hidden bg-slate-50/15 select-none p-4 md:p-6 pb-[calc(1rem+env(safe-area-inset-bottom))] lg:pb-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 mb-4 md:mb-5">
+      <div className="flex flex-col flex-row items-center justify-between gap-3 shrink-0 mb-4 md:mb-5">
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
             <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 shrink-0" />
@@ -350,7 +350,7 @@ export function Reports({
               ? `Download ${periodLabel} report for ${selectedVenueName}`
               : 'Load a venue with energy data first'
           }
-          className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm shadow-blue-600/15 active:scale-95"
+          className="w-auto shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm shadow-blue-600/15 active:scale-95"
         >
           <Download className="w-4 h-4" />
           Download CSV
@@ -359,12 +359,12 @@ export function Reports({
 
       <div className="flex-1 min-h-0 bg-white rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
         <div className="flex-1 min-h-0 flex flex-col p-4 md:p-6 gap-4 md:gap-5">
-          <div className="shrink-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)_minmax(0,0.65fr)] gap-3 md:gap-4">
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 min-w-0">
+          <div className="shrink-0 grid grid-cols-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)_minmax(0,0.65fr)] gap-3 md:gap-4">
+            <div className="col-span-2 lg:col-span-1 rounded-2xl border border-slate-100 bg-slate-50/60 p-4 min-w-0">
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-3">
                 Filters
               </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5 min-w-0">
                   <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                     <Building2 className="w-3.5 h-3.5 text-blue-500" />
