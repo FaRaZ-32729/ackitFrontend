@@ -350,7 +350,7 @@ export function Reports({
               ? `Download ${periodLabel} report for ${selectedVenueName}`
               : 'Load a venue with energy data first'
           }
-          className="w-[46%] sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-2.5 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm shadow-blue-600/15 active:scale-95"
+          className="w-[48%] sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-2.5 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm shadow-blue-600/15 active:scale-95"
         >
           <Download className="w-4 h-4" />
           Download CSV
