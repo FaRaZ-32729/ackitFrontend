@@ -2504,7 +2504,7 @@ export function Dashboard({
                 </div>
 
                 {/* Super | Lock | Unlock strip */}
-                <div className="bg-white rounded-xl p-0.5 grid grid-cols-3 gap-0.5">
+                <div className="bg-white rounded-xl p-0.5 grid grid-cols-3 w-full justify-items-stretch">
                   {(
                     [
                       {
