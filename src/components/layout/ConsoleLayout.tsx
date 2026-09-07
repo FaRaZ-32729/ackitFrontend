@@ -70,17 +70,17 @@ export function ConsoleLayout() {
   }
 
   const managerTabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'organizations', label: 'Organization', icon: Building2 },
+    { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
+    { id: 'organizations', label: 'Orgs', icon: Building2 },
     { id: 'venues', label: 'Venues', icon: MapPin },
     { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
-    { id: 'users', label: 'Users', icon: Users }
+    { id: 'users', label: 'Users', icon: Users },
   ];
 
   const userTabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
     { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
-    { id: 'reports', label: 'Reports', icon: Activity }
+    { id: 'reports', label: 'Reports', icon: Activity },
   ];
 
   const mobileTabs = role === 'manager' ? managerTabs : userTabs;
@@ -121,7 +121,7 @@ export function ConsoleLayout() {
       )}
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden h-full pb-[calc(3.25rem+0.75rem)] lg:pb-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden h-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] lg:pb-0">
         
         {/* Mobile Header */}
         {role !== 'admin' && (
@@ -240,67 +240,82 @@ export function ConsoleLayout() {
         </main>
       </div>
 
-      {/* Mobile bottom nav — blue bar with sliding white active scoop */}
+      {/* Mobile bottom nav — floating light pill + active hump (screenshot style) */}
       {role !== 'admin' && (
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 px-4 pb-3 pt-1 bg-gradient-to-t from-slate-100/90 via-slate-50/40 to-transparent">
-          <div className="relative w-full bg-blue-600 rounded-[1.85rem] shadow-xl shadow-blue-600/25 flex items-center min-h-[3.4rem] overflow-hidden">
-            {/* Sliding white U-scoop indicator */}
-            {activeTabIndex >= 0 && (
-              <motion.div
-                className="absolute inset-y-0 z-0 flex justify-center pointer-events-none"
-                initial={false}
-                animate={{ left: `${(activeTabIndex / tabCount) * 100}%` }}
-                transition={{ type: 'spring', stiffness: 420, damping: 34, mass: 0.85 }}
-                style={{ width: `${100 / tabCount}%` }}
-              >
-                <div className="relative self-start w-[70%] max-w-[3rem] h-[2.65rem]">
-                  {/* White scoop cut into the blue bar */}
-                  <div className="absolute inset-0 bg-[#f8fafc] rounded-b-[1.55rem]" />
-                  {/* Left concave fillet — hide on first tab so it doesn't poke past the bar edge */}
-                  {activeTabIndex > 0 && (
+        <nav
+          className="lg:hidden fixed bottom-0 left-0 right-0 z-50 px-3 sm:px-4 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-1 pointer-events-none"
+          aria-label="Primary"
+        >
+          <div className="pointer-events-auto relative mx-auto w-full max-w-[26rem] ">
+            <div className="relative w-full rounded-[2.5rem] bg-blue-100/35 px-2 shadow shadow-bottom-xl overflow-hidden">
+              <ul className="relative flex items-stretch m-0 p-0 list-none">
+                {/* Sliding active hump */}
+                {activeTabIndex >= 0 && (
+                  <motion.li
+                    aria-hidden
+                    className="absolute inset-y-0 z-0 pointer-events-none list-none"
+                    initial={false}
+                    animate={{ left: `${(activeTabIndex / tabCount) * 100}%` }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 420,
+                      damping: 34,
+                      mass: 0.85,
+                    }}
+                    style={{ width: `${100 / tabCount}%` }}
+                  >
+                    {/* Single path: dome + both concave base fillets, so there are
+                        no overlapping edges that could show seam lines. */}
                     <svg
-                      className="absolute top-[1.35rem] right-full w-3.5 h-3.5 text-blue-600 fill-current"
-                      viewBox="0 0 16 16"
-                      aria-hidden
+                      className="absolute bottom-0 left-1/2 -translate-x-1/2 text-blue-600"
+                      style={{
+                        width: 'min(calc(100% + 2.5rem), 6.75rem)',
+                        height: 'calc(100% - 0.5rem)',
+                      }}
+                      viewBox="0 0 108 62"
+                      preserveAspectRatio="none"
+                      fill="currentColor"
+                      focusable="false"
                     >
-                      <path d="M16 0 A 16 16 0 0 0 0 16 H 16 V 0 Z" />
+                      <path d="M0,62 A20,20 0 0 0 20,42 L20,34 A34,34 0 0 1 88,34 L88,42 A20,20 0 0 0 108,62 Z" />
                     </svg>
-                  )}
-                  {/* Right concave fillet — hide on last tab so it doesn't poke past the bar edge */}
-                  {activeTabIndex < tabCount - 1 && (
-                    <svg
-                      className="absolute top-[1.35rem] left-full w-3.5 h-3.5 text-blue-600 fill-current"
-                      viewBox="0 0 16 16"
-                      aria-hidden
-                    >
-                      <path d="M0 0 A 16 16 0 0 1 16 16 H 0 V 0 Z" />
-                    </svg>
-                  )}
-                </div>
-              </motion.div>
-            )}
+                  </motion.li>
+                )}
 
-            {mobileTabs.map((tab) => {
-              const Icon = tab.icon;
-              const active = isTabActive(tab.id);
+                {mobileTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const active = isTabActive(tab.id);
 
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => handleTabClick(tab.id)}
-                  aria-label={tab.label}
-                  aria-current={active ? 'page' : undefined}
-                  className={`
-                    relative z-10 flex-1 min-w-0 flex items-center justify-center self-stretch
-                    outline-none transition-colors duration-300 active:scale-95
-                    ${active ? 'text-blue-600' : 'text-white'}
-                  `}
-                >
-                  <Icon className="w-5 h-5 shrink-0" strokeWidth={active ? 2.5 : 2} />
-                </button>
-              );
-            })}
+                  return (
+                    <li key={tab.id} className="relative z-10 flex-1 min-w-0 m-0 p-0 list-none">
+                      <button
+                        type="button"
+                        onClick={() => handleTabClick(tab.id)}
+                        aria-label={tab.label}
+                        aria-current={active ? 'page' : undefined}
+                        className={`
+                          relative z-[1] w-full h-[4.35rem] flex flex-col items-center justify-center gap-0.5
+                          outline-none transition-colors duration-300 active:scale-95
+                          ${active ? 'text-white' : 'text-[#2f3542] hover:text-blue-600'}
+                        `}
+                      >
+                        <Icon
+                          className="w-[1.35rem] h-[1.35rem] shrink-0"
+                          strokeWidth={active ? 2.5 : 2}
+                        />
+                        <span
+                          className={`text-[10px] leading-tight tracking-wide ${
+                            active ? 'font-bold' : 'font-medium'
+                          }`}
+                        >
+                          {tab.label}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           </div>
         </nav>
       )}
