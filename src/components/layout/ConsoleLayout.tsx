@@ -75,6 +75,7 @@ export function ConsoleLayout() {
     { id: 'venues', label: 'Venues', icon: MapPin },
     { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
     { id: 'users', label: 'Users', icon: Users },
+    { id: 'reports', label: 'Reports', icon: Activity },
   ];
 
   const userTabs = [
@@ -172,36 +173,6 @@ export function ConsoleLayout() {
                       onClick={() => setShowProfileMenu(false)}
                     />
                     <div className="absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2.5 z-50 text-slate-800 animate-in fade-in slide-in-from-top-2 duration-150">
-                      {role === 'manager' && (
-                        <>
-                          <button
-                            onClick={() => {
-                              setShowProfileMenu(false);
-                              handleTabClick('dashboard');
-                            }}
-                            className={`w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-600 font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-colors cursor-pointer ${
-                              activeTab === 'dashboard' ? 'bg-blue-50/50 text-blue-600' : ''
-                            }`}
-                          >
-                            <LayoutDashboard className="w-4 h-4" />
-                            Dashboard
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              setShowProfileMenu(false);
-                              handleTabClick('reports');
-                            }}
-                            className={`w-full text-left px-4 py-2 hover:bg-blue-50 hover:text-blue-600 font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-colors cursor-pointer ${
-                              activeTab === 'reports' ? 'bg-blue-50/50 text-blue-600' : ''
-                            }`}
-                          >
-                            <Activity className="w-4 h-4" />
-                            Energy Report
-                          </button>
-                        </>
-                      )}
-
                       <button
                         onClick={() => {
                           setShowProfileMenu(false);
