@@ -361,9 +361,6 @@ export function Reports({
         <div className="flex-1 min-h-0 flex flex-col p-4 md:p-6 gap-4 md:gap-5">
           <div className="shrink-0 grid grid-cols-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)_minmax(0,0.65fr)] gap-3 md:gap-4">
             <div className="col-span-2 lg:col-span-1 rounded-2xl border border-slate-100 bg-slate-50/60 p-4 min-w-0">
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-3">
-                Filters
-              </span>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5 min-w-0">
                   <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
