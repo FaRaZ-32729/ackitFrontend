@@ -208,7 +208,7 @@
   width: 48px;
   height: 48px;
   border-radius: 999px;
-  background: hwb(194 78% 0%);
+  background: hwb(0 92% 8%);
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -299,10 +299,10 @@
 .eco-help-header-logo {
   width: 28px;
   height: 28px;
-  border-radius: 999px;
+  /* border-radius: 999px; */
   object-fit: contain;
   background: #ffffff;
-  padding: 3px;
+  /* padding: 3px; */
 }
 
 .eco-help-header-actions {
@@ -492,9 +492,10 @@
   height: 26px;
   border-radius: 999px;
   object-fit: contain;
-  background: #0f172a;
+  background: #ffffff;
   padding: 3px;
   flex-shrink: 0;
+  border: 1px solid #eef0f3;
 }
 
 .eco-help-bubble {

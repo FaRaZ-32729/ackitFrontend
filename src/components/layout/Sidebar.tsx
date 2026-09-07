@@ -39,13 +39,13 @@ export function Sidebar({ role, activeTab, onTabChange, onLogout, isOpen, onClos
     <>
       {/* Mobile Overlay */}
       <div 
-        className={`fixed inset-0 bg-slate-900/50 z-40 lg:hidden transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 bg-slate-900/50 z-40 xl:hidden transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={onClose}
       />
 
       <div 
-        className={`bg-white border-r border-slate-200 transition-all duration-300 flex flex-col h-full fixed lg:relative z-50 w-20 overflow-y-auto [@media(min-height:750px)]:overflow-y-visible ${
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        className={`bg-white border-r border-slate-200 transition-all duration-300 flex flex-col h-full fixed xl:relative z-50 w-20 overflow-y-auto [@media(min-height:750px)]:overflow-y-visible ${
+          isOpen ? 'translate-x-0' : '-translate-x-full xl:translate-x-0'
         }`}
       >
         <div className="p-4 flex items-center justify-center border-b border-slate-200 h-16 shrink-0 relative">
@@ -59,7 +59,7 @@ export function Sidebar({ role, activeTab, onTabChange, onLogout, isOpen, onClos
           {isOpen && (
             <button 
               onClick={onClose}
-              className="lg:hidden absolute -right-10 top-4 text-white p-2 bg-slate-800 rounded-full shadow-lg"
+              className="xl:hidden absolute -right-10 top-4 text-white p-2 bg-slate-800 rounded-full shadow-lg"
             >
               <X className="w-5 h-5" />
             </button>

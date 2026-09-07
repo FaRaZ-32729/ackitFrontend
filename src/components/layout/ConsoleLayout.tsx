@@ -104,7 +104,7 @@ export function ConsoleLayout() {
   const tabCount = mobileTabs.length;
 
   return (
-    <div className="h-screen bg-slate-50 font-sans text-slate-900 flex flex-col lg:flex-row overflow-hidden relative">
+    <div className="h-screen bg-slate-50 font-sans text-slate-900 flex flex-col xl:flex-row overflow-hidden relative">
       {/* Laptop Persistent Sidebar */}
       {role !== 'admin' && (
         <Sidebar 
@@ -122,18 +122,18 @@ export function ConsoleLayout() {
       )}
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden h-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] lg:pb-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden h-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] xl:pb-0">
         
         {/* Mobile Header */}
         {role !== 'admin' && (
-          <header className="lg:hidden h-12 bg-white border-b border-slate-100 flex items-center justify-between px-4 shrink-0 z-40 shadow-sm relative">
+          <header className="xl:hidden h-14 bg-transparent flex items-center justify-between px-4 shrink-0 z-40 relative">
             <img
               src="/logo.png"
               alt="Ackit"
               className="h-8 w-auto object-contain"
             />
             
-            <div className="flex items-center gap-2 bg-blue-600 text-white rounded-full px-2.5 py-1 shadow-md hover:bg-blue-700 transition-colors">
+            <div className="flex items-center gap-2 bg-blue-600 text-white rounded-full px-2.5 py-2.5 shadow-md hover:bg-blue-700 transition-colors">
               <Menu 
                 className={`w-4 h-4 cursor-pointer active:scale-95 transition-all ${
                   (activeTab === 'organizations' && isAddOrgOpen) || 
@@ -214,7 +214,7 @@ export function ConsoleLayout() {
       {/* Mobile bottom nav — floating light pill + active hump (screenshot style) */}
       {role !== 'admin' && (
         <nav
-          className="lg:hidden fixed bottom-0 left-0 right-0 z-50 px-3 sm:px-4 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-1 pointer-events-none"
+          className="xl:hidden fixed bottom-0 left-0 right-0 z-50 px-3 sm:px-4 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-1 pointer-events-none"
           aria-label="Primary"
         >
           <div className="pointer-events-auto relative mx-auto w-full max-w-[26rem] ">

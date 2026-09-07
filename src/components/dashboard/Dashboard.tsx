@@ -22,7 +22,8 @@ import {
   Activity, 
   AlertTriangle, 
   Plus, 
-  Calendar, 
+  Calendar,
+  Clock, 
   Fan, 
   Sparkles, 
   Snowflake, 
@@ -39,6 +40,9 @@ import {
   Bell,
   Zap,
   MonitorSmartphone,
+  Smartphone,
+  SlidersHorizontal,
+  Minus,
   Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -51,6 +55,34 @@ const TEMP_MIN = 16;
 const TEMP_MAX = 30;
 const TEMP_ECO = 24;
 const TEMP_DEBOUNCE_MS = 2000;
+
+/** Energy sparkline: stroke + filled area. Amplitude rises with live kW.
+ *  Starts at the left edge (baseline) then fades the wave in so it blends into the card. */
+function buildEnergyWave(powerKw: number, deviceCount: number): { line: string; area: string } {
+  const scale = Math.max(deviceCount * 1.5, 2);
+  const t = Math.min(1, Math.max(0, powerKw) / scale);
+  const width = 120;
+  const height = 40;
+  const baseline = 34;
+  const amp = 6 + t * 16;
+  const pts: Array<{ x: number; y: number }> = [];
+  for (let x = 0; x <= width; x += 3) {
+    const p = x / width;
+    const fadeIn = Math.min(1, p / 0.18);
+    const y =
+      baseline -
+      amp *
+        fadeIn *
+        (0.18 * Math.sin(p * Math.PI * 1.15) +
+          0.22 * Math.sin(p * Math.PI * 2.4 + 0.4) +
+          0.55 * Math.pow(p, 1.35) * (0.55 + 0.45 * Math.sin(p * Math.PI * 1.8)));
+    pts.push({ x, y: Math.max(4, y) });
+  }
+  const line = `M${pts.map((pt) => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(' L')}`;
+  const last = pts[pts.length - 1];
+  const area = `${line} L${last.x.toFixed(1)},${height} L0,${height} Z`;
+  return { line, area };
+}
 
 function isDeviceOnline(unit: ACUnit): boolean {
   // Missing status = treat as online (legacy/static units); real API devices set status
@@ -1181,7 +1213,7 @@ export function Dashboard({
       </AnimatePresence>
       
       {/* DESKTOP DASHBOARD VIEW */}
-      <div className="hidden lg:flex w-full h-full flex-col xl:flex-row gap-4 max-w-full px-2.5 md:px-4 py-2 md:py-3 bg-slate-50/10 overflow-hidden">
+      <div className="hidden xl:flex w-full h-full flex-col xl:flex-row gap-4 max-w-full px-2.5 md:px-4 py-2 md:py-3 bg-slate-50/10 overflow-hidden">
         
         {/* LEFT SECTION (65% width on desktop) */}
         <div className="flex-1 h-full overflow-y-auto pr-1.5 space-y-5 min-w-0 custom-scrollbar pb-4">
@@ -2334,11 +2366,11 @@ export function Dashboard({
         const controllableUnits = framePowerTargets;
         const allUnitsOn =
           controllableUnits.length > 0 && controllableUnits.every((u) => u.isOn);
-        const arcActiveColor = allUnitsOn ? '#4f46e5' : '#94a3b8';
-        const handleArrow = allUnitsOn ? '#4f46e5' : '#94a3b8';
+        const energyWave = buildEnergyWave(framePowerKw, totalUnitsCount);
+        const handleArrow = allUnitsOn ? '#2563eb' : '#94a3b8';
 
         return (
-          <div className="flex lg:hidden flex-col h-full w-full bg-[#f3f4f6] text-slate-800 select-none overflow-hidden justify-between p-4 pb-1">
+          <div className="flex xl:hidden flex-col h-full w-full text-slate-800 select-none overflow-y-auto px-4 pb-4 pt-1 gap-2">
             
             {/* Top Entity Name */}
             <div className="text-center text-[11px] font-extrabold uppercase tracking-widest text-slate-400 mt-1 mb-2 shrink-0 flex items-center justify-center gap-1.5 min-w-0 px-1">
@@ -2352,16 +2384,16 @@ export function Dashboard({
                 </>
               ) : (
                 <>
-                  <span className="shrink-0">Organization:</span>
+                  {/* <span className="shrink-0">Organization:</span> */}
                   {orgs.length > 1 ? (
-                    <div className="min-w-0 max-w-[10rem] normal-case tracking-normal">
+                    <div className="min-w-full normal-case tracking-normal">
                       <CustomDropdown
                         icon={Building2}
                         value={activeOrg.id || ''}
                         onChange={handleOrgChange}
                         placeholder="Select organization"
                         options={orgs.map((org) => ({ value: org.id, label: org.name }))}
-                        triggerClassName="!py-1 !px-2 !text-[11px] !font-extrabold !rounded-xl"
+                        triggerClassName="!py-2 !px-2 !text-[11px] !font-extrabold !rounded-xl "
                       />
                     </div>
                   ) : (
@@ -2371,81 +2403,216 @@ export function Dashboard({
               )}
             </div>
 
-            {/* Metrics Row (3 Cards Grid matching figma) */}
-            <div className="grid grid-cols-3 gap-2 flex-none shrink-0">
+            {/* Metrics Row — Energy / Devices / Lock (mobile reference UI) */}
+            <div className="grid grid-cols-3 gap-2 flex-none shrink-0 items-stretch">
               
-              {/* Card 1: Energy */}
-              <div className="bg-slate-100/80 rounded-2xl p-3 flex flex-col justify-between border border-slate-200/40">
-                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">ENERGY</span>
-                <div className="flex items-center gap-1 mt-2">
-                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500 shrink-0" />
-                  <span className="text-xs font-black text-slate-800 tracking-tight">{framePowerKw.toFixed(2)} <span className="text-[8px] font-bold text-slate-400">kW</span></span>
+              {/* Card 1: Energy — reference layout (icon, ENERGY, kW, filled wave) */}
+              <div className="relative overflow-hidden rounded-2xl p-2 flex flex-col min-h-0 bg-[linear-gradient(135deg,#2ec4a0_0%,#149a78_48%,#0b6b52_100%)] shadow-md shadow-emerald-700/20">
+                <div className="relative z-[1] flex items-start justify-between">
+                  <div className="w-6 h-6 rounded-full bg-[#7ee0c4]/55 flex items-center justify-center">
+                    <Zap className="w-3 h-3 text-white fill-white" />
+                  </div>
+                  <ChevronRight className="w-3.5 h-3.5 text-white/90 shrink-0" strokeWidth={2} />
+                </div>
+                <div className="relative z-[1] mt-1.5 flex flex-col items-start">
+                  <span className="text-[8px] font-black uppercase text-white tracking-[0.12em] leading-none">
+                    Energy
+                  </span>
+                  <div className="flex items-baseline gap-0.5 mt-1">
+                    <span className="text-[15px] font-black text-white tracking-tight leading-none">
+                      {framePowerKw.toFixed(2)}
+                    </span>
+                    <span className="text-[8px] font-medium text-white/90 leading-none">
+                      kW
+                    </span>
+                  </div>
+                </div>
+                <svg
+                  className="absolute bottom-0 left-0 w-full h-[42%] pointer-events-none"
+                  viewBox="0 0 120 40"
+                  preserveAspectRatio="none"
+                  aria-hidden
+                >
+                  <defs>
+                    <linearGradient id="energySparkFade" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="white" stopOpacity="0" />
+                      <stop offset="16%" stopColor="white" stopOpacity="1" />
+                    </linearGradient>
+                    <mask id="energySparkMask">
+                      <rect width="120" height="40" fill="url(#energySparkFade)" />
+                    </mask>
+                  </defs>
+                  <g mask="url(#energySparkMask)">
+                    <path d={energyWave.area} fill="rgba(255,255,255,0.22)" />
+                    <path
+                      d={energyWave.line}
+                      fill="none"
+                      stroke="white"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </g>
+                </svg>
+              </div>
+
+              {/* Card 2: Devices & Faults — phone icon */}
+              <div className="relative rounded-2xl p-2 flex flex-col justify-between bg-white border border-slate-100 shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center">
+                    <Smartphone className="w-3 h-3 text-teal-700" />
+                  </div>
+                </div>
+                <div className="min-w-0 mt-0.5">
+                  <span className="text-sm font-black text-emerald-600 leading-none">
+                    # {totalUnitsCount}
+                  </span>
+                  <span className="text-[7px] font-bold text-slate-500 uppercase tracking-wide block mt-0.5 leading-tight">
+                    No. of devices
+                  </span>
+                </div>
+                <div className="h-px bg-slate-100 my-1 shrink-0" />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 text-red-500 shrink-0" />
+                    <span className="text-sm font-black text-red-600 leading-none">
+                      {faultUnitsCount}
+                    </span>
+                  </div>
+                  <span className="text-[7px] font-bold text-slate-500 uppercase tracking-wide block mt-0.5 leading-tight">
+                    Fault devices
+                  </span>
                 </div>
               </div>
 
-              {/* Card 2: Devices & Faults */}
-              <div className="bg-slate-100/80 rounded-2xl p-2 flex flex-col justify-between border border-slate-200/40 leading-none">
-                <div className="flex items-center gap-1">
-                  <span className="text-[11px] font-black text-emerald-500">#</span>
-                  <span className="text-xs font-black text-emerald-600">{totalUnitsCount}</span>
+              {/* Card 3: Lock State — exact reference layout */}
+              <div className="relative overflow-hidden rounded-2xl px-2 pt-2 pb-1.5 flex flex-col justify-around items-center bg-[#2563eb] shadow-md shadow-blue-600/25">
+                {/* Header: lock + LOCK STATE + chevron */}
+                <div className="flex items-center gap-1 min-w-0">
+                  <Lock className="w-3 h-3 text-white shrink-0" strokeWidth={2.25} />
+                  <span className="flex-1 min-w-0 text-[8px] font-black uppercase text-white tracking-wider leading-none truncate">
+                    Lock State
+                  </span>
+                  {/* <ChevronDown className="w-3 h-3 text-white/90 shrink-0" /> */}
                 </div>
-                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tight mt-0.5 block">No. of devices</span>
-                
-                <div className="h-px bg-slate-200/60 my-1 shrink-0" />
-                
-                <div className="flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5 text-red-500" />
-                  <span className="text-xs font-black text-red-600">{faultUnitsCount}</span>
-                </div>
-                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tight mt-0.5 block">Fault Devices</span>
-              </div>
 
-              {/* Card 3: Lock State — custom dropdown (opens downward) */}
-              <div className="min-w-0 h-full">
-                <CustomDropdown
-                  placement="down"
-                  value={lockState === 'Mixed' ? '' : lockState}
-                  placeholder="Mixed"
-                  onChange={(v) => {
-                    if (v === 'Unlocked' || v === 'Locked' || v === 'Super Locked') {
-                      handleBulkLockChange(v);
-                    }
-                  }}
-                  options={[
-                    { value: 'Unlocked', label: 'Unlock' },
-                    { value: 'Locked', label: 'Lock' },
-                    { value: 'Super Locked', label: 'Super Lock' },
-                  ]}
-                  className="h-full"
-                  triggerClassName="h-full bg-blue-600 hover:bg-blue-700 text-white rounded-2xl p-3 flex-col justify-between items-stretch border border-blue-500/10 shadow-sm text-left"
-                  triggerContent={
-                    <>
-                      <div className="flex items-center justify-between w-full">
-                        <span className="text-[9px] font-black uppercase text-blue-100 tracking-wider">
-                          Lock State
-                        </span>
-                        <ChevronDown className="w-3 h-3 text-blue-200 shrink-0" />
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-2 min-w-0">
-                        {lockState === 'Unlocked' ? (
-                          <Unlock className="w-4 h-4 text-yellow-300 shrink-0" />
+                {/* Current status pill */}
+                <div className="w-full rounded-lg bg-white/25 px-2 py-2 flex items-center justify-center">
+                  <span className="text-[10px] font-black text-white tracking-tight leading-none truncate">
+                    {lockState}
+                  </span>
+                </div>
+
+                {/* Super | Lock | Unlock strip */}
+                <div className="bg-white rounded-xl p-0.5 grid grid-cols-3 gap-0.5">
+                  {(
+                    [
+                      {
+                        key: 'Super Locked' as const,
+                        label: 'Super',
+                        selected: lockState === 'Super Locked',
+                        iconColor: 'text-red-600',
+                        selectedBg: 'bg-red-50',
+                        idleColor: 'text-slate-400',
+                        unlockIcon: false,
+                        onPick: () => handleBulkLockChange('Super Locked'),
+                      },
+                      {
+                        key: 'Locked' as const,
+                        label: 'Lock',
+                        selected: lockState === 'Locked',
+                        iconColor: 'text-emerald-600',
+                        selectedBg: 'bg-emerald-50',
+                        idleColor: 'text-slate-400',
+                        unlockIcon: false,
+                        onPick: () => handleBulkLockChange('Locked'),
+                      },
+                      {
+                        key: 'Unlocked' as const,
+                        label: 'Unlock',
+                        selected: lockState === 'Unlocked',
+                        iconColor: 'text-slate-500',
+                        selectedBg: 'bg-slate-100',
+                        idleColor: 'text-slate-400',
+                        unlockIcon: true,
+                        onPick: () => handleBulkLockChange('Unlocked'),
+                      },
+                    ] as const
+                  ).map((opt) => {
+                    const color = opt.selected ? opt.iconColor : opt.idleColor;
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => opt.onPick()}
+                        className={`
+                          flex flex-col items-center justify-center gap-0.5 py-1 px-0.5 rounded-lg
+                          transition-colors active:scale-95 cursor-pointer
+                          ${opt.selected ? opt.selectedBg : 'bg-transparent'}
+                        `}
+                      >
+                        {opt.unlockIcon ? (
+                          <Unlock className={`w-3 h-3 ${color}`} strokeWidth={2.25} />
                         ) : (
-                          <Lock className="w-4 h-4 text-white shrink-0" />
+                          <Lock
+                            className={`w-3 h-3 ${color} ${opt.selected ? 'fill-current' : ''}`}
+                            strokeWidth={2.25}
+                          />
                         )}
-                        <span className="text-[11px] font-black tracking-tight truncate leading-none text-white">
-                          {lockState}
+                        <span
+                          className={`text-[6px] font-bold leading-none tracking-tight ${color}`}
+                        >
+                          {opt.label}
                         </span>
-                      </div>
-                    </>
-                  }
-                />
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
             </div>
 
-            {/* Circular Dial Temp Area (No overflow, responsive) */}
-            <div className="flex-1 min-h-0 flex items-center justify-center relative py-3 max-h-[35vh]">
-              <div className="relative w-full max-w-[240px] aspect-square flex items-center justify-center">
+            {/* Climate control section — dial + auto adjust + power (UI only) */}
+            <section className="relative overflow-hidden flex flex-col items-center justify-center gap-3 py-3 px-2 w-full shrink-0 rounded-[1.75rem] border border-slate-100 bg-white shadow-[0_6px_20px_rgba(148,163,184,0.08)]">
+            {/* Soft wave background (does not affect dial/controls) */}
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox="0 0 360 420"
+              preserveAspectRatio="xMidYMid slice"
+              aria-hidden
+            >
+              <defs>
+                <linearGradient id="tempCardSky" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#ffffff" />
+                  <stop offset="100%" stopColor="#ffffff" />
+                </linearGradient>
+                <linearGradient id="tempWaveA" x1="0%" y1="50%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#bae6fd" stopOpacity="0.32" />
+                  <stop offset="100%" stopColor="#e0f2fe" stopOpacity="0.1" />
+                </linearGradient>
+                <linearGradient id="tempWaveB" x1="100%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#7dd3fc" stopOpacity="0.14" />
+                  <stop offset="100%" stopColor="#f0f9ff" stopOpacity="0.04" />
+                </linearGradient>
+              </defs>
+              <rect width="360" height="420" fill="url(#tempCardSky)" />
+              <path
+                d="M-20 210 C40 160, 90 270, 160 200 C230 130, 280 240, 380 170 L380 430 L-20 430 Z"
+                fill="url(#tempWaveA)"
+              />
+              <path
+                d="M-20 90 C70 40, 120 150, 200 80 C280 10, 320 120, 380 60 L380 0 L-20 0 Z"
+                fill="url(#tempWaveB)"
+              />
+              <path
+                d="M180 430 C220 320, 280 360, 380 280 L380 430 Z"
+                fill="#7dd3fc"
+                opacity="0.1"
+              />
+              <ellipse cx="70" cy="180" rx="90" ry="55" fill="#7dd3fc" opacity="0.1" />
+              <ellipse cx="300" cy="240" rx="80" ry="50" fill="#bae6fd" opacity="0.12" />
+            </svg>
+            <div className="relative z-[1] w-full max-w-[240px] aspect-square">
                 
                 {/* SVG Temperature Arc Semicircle */}
                 <svg
@@ -2453,19 +2620,28 @@ export function Dashboard({
                   viewBox="0 0 220 220"
                   className="w-full h-full select-none overflow-visible touch-none"
                 >
+                  <defs>
+                    <linearGradient id="mobileArcFill" x1="0%" y1="50%" x2="100%" y2="50%">
+                      <stop offset="0%" stopColor="#2563eb" />
+                      <stop offset="100%" stopColor="#93c5fd" />
+                    </linearGradient>
+                    <filter id="mobileKnobShadow" x="-40%" y="-40%" width="180%" height="180%">
+                      <feDropShadow dx="0" dy="1.5" stdDeviation="1.6" floodColor="#0f172a" floodOpacity="0.18" />
+                    </filter>
+                  </defs>
                   {/* Background Track */}
                   <path 
                     d="M 39.5 169.1 A 92 92 0 1 1 180.5 169.1" 
-                    stroke="#eaecef" 
-                    strokeWidth="8.5" 
+                    stroke="#e8eef8" 
+                    strokeWidth="11" 
                     strokeLinecap="round" 
                     fill="none" 
                   />
-                  {/* Active Fill Arc — blue when ON, gray when OFF */}
+                  {/* Active Fill Arc — blue gradient when ON, gray when OFF */}
                   <path 
                     d="M 39.5 169.1 A 92 92 0 1 1 180.5 169.1" 
-                    stroke={arcActiveColor}
-                    strokeWidth="8.5" 
+                    stroke={allUnitsOn ? 'url(#mobileArcFill)' : '#94a3b8'}
+                    strokeWidth="11" 
                     strokeLinecap="round" 
                     strokeDasharray="417.5"
                     strokeDashoffset={417.5 - (417.5 * (tempValue - TEMP_MIN) / (TEMP_MAX - TEMP_MIN))}
@@ -2502,14 +2678,14 @@ export function Dashboard({
                     />
                     <circle 
                       r="13" 
-                      fill="#e2e8f0"
+                      fill="#ffffff"
                       stroke="#ffffff" 
-                      strokeWidth="2.5" 
+                      strokeWidth="2.5"
+                      filter="url(#mobileKnobShadow)"
                       className="transition-colors duration-300"
                     />
-                    {/* Left triangle */}
+                    {/* Left / right arrows */}
                     <path d="M -2.5 -3.5 L -6.5 0 L -2.5 3.5 Z" fill={handleArrow} className="transition-colors duration-300" />
-                    {/* Right triangle */}
                     <path d="M 2.5 -3.5 L 6.5 0 L 2.5 3.5 Z" fill={handleArrow} className="transition-colors duration-300" />
                   </g>
 
@@ -2519,10 +2695,15 @@ export function Dashboard({
                 </svg>
 
                 {/* Inner Content Controller - perfectly fits inside the arc */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center -mt-1 pointer-events-none">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-[0.25em] mb-1">COOL</span>
+                <div className="absolute inset-0 flex flex-col items-center justify-center -mt-2 pointer-events-none">
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <Snowflake className="w-3.5 h-3.5 text-[#2563eb]" strokeWidth={2.25} />
+                    <span className="text-[10px] font-bold uppercase text-[#60a5fa] tracking-[0.22em]">
+                      Cool
+                    </span>
+                  </div>
                   
-                  <div className="flex items-center justify-center gap-3 my-0.5 pointer-events-auto">
+                  <div className="flex items-center justify-center gap-2.5 my-0.5 pointer-events-auto">
                     {/* Minus Button */}
                     <button 
                       type="button" 
@@ -2531,21 +2712,24 @@ export function Dashboard({
                         if (!allUnitsOn) return;
                         handleBulkTempAdjust(-1);
                       }}
-                      className={`w-9 h-9 rounded-full bg-[#f1f3f5] text-slate-900 font-light flex items-center justify-center transition-all text-lg shadow-sm border border-slate-200/10 shrink-0 select-none ${
+                      className={`w-9 h-9 rounded-full bg-white text-[#2563eb] flex items-center justify-center transition-all shadow-[0_2px_8px_rgba(15,23,42,0.12)] shrink-0 select-none ${
                         allUnitsOn
-                          ? 'hover:bg-slate-200 active:bg-slate-300 active:scale-90'
+                          ? 'hover:bg-slate-50 active:scale-90'
                           : 'opacity-40 cursor-not-allowed'
                       }`}
                     >
-                      -
+                      <Minus className="w-4 h-4" strokeWidth={2.5} />
                     </button>
                     
                     {/* Temp Value */}
-                    <div className="flex flex-col items-center justify-center min-w-[65px] text-center">
-                      <span className={`font-extrabold text-slate-900 tracking-tight leading-none ${
-                        targetTempState === 'Mixed' ? 'text-base' : 'text-[36px]'
+                    <div className="flex flex-col items-center justify-center min-w-[72px] text-center">
+                      <span className={`font-extrabold text-slate-800 tracking-tight leading-none ${
+                        targetTempState === 'Mixed' ? 'text-base' : 'text-[34px]'
                       }`}>
-                        {targetTempState}
+                        {targetTempState === 'Mixed' ? 'Mixed' : `${targetTempState}°C`}
+                      </span>
+                      <span className="text-[9px] font-medium text-slate-400 mt-0.5 leading-none">
+                        Current Temperature
                       </span>
                     </div>
 
@@ -2557,66 +2741,62 @@ export function Dashboard({
                         if (!allUnitsOn) return;
                         handleBulkTempAdjust(1);
                       }}
-                      className={`w-9 h-9 rounded-full bg-[#f1f3f5] text-slate-900 font-light flex items-center justify-center transition-all text-lg shadow-sm border border-slate-200/10 shrink-0 select-none ${
+                      className={`w-9 h-9 rounded-full bg-white text-[#2563eb] flex items-center justify-center transition-all shadow-[0_2px_8px_rgba(15,23,42,0.12)] shrink-0 select-none ${
                         allUnitsOn
-                          ? 'hover:bg-[#eaecef] active:bg-slate-300 active:scale-90'
+                          ? 'hover:bg-slate-50 active:scale-90'
                           : 'opacity-40 cursor-not-allowed'
                       }`}
                     >
-                      +
+                      <Plus className="w-4 h-4" strokeWidth={2.5} />
                     </button>
                   </div>
-                  
-                  {targetTempState !== 'Mixed' && (
-                    <span className="text-sm font-medium text-slate-400">°C</span>
-                  )}
                   
                   <button 
                     type="button"
                     onClick={handleBulkEco}
-                    className="mt-3 px-5 py-2 rounded-full text-[12px] font-semibold tracking-wide transition-colors pointer-events-auto bg-[#e0e5f8] hover:bg-indigo-100 text-[#4f46e5]"
+                    className="mt-2.5 px-3.5 py-1.5 rounded-full text-[11px] font-semibold tracking-wide transition-colors pointer-events-auto bg-[#e8eefc] hover:bg-blue-100 text-[#2563eb] inline-flex items-center gap-1.5"
                   >
+                    <SlidersHorizontal className="w-3.5 h-3.5" strokeWidth={2.25} />
                     Auto Adjust
                   </button>
                 </div>
 
-              </div>
             </div>
-
-            {/* ON | OFF Toggle Capsule (matching Figma outline style) */}
-            <div className="flex justify-center mb-3 flex-none shrink-0">
-              <div className="bg-white border border-slate-400 rounded-full flex items-center h-12 shadow-sm max-w-[200px] w-full px-5">
+            <div className="relative z-[1] flex justify-center w-full shrink-0">
+              <div className="flex items-center h-12 w-full max-w-[240px] rounded-full bg-slate-100 p-1">
                 <button
                   type="button"
                   onClick={() => handleBulkPowerToggle(true)}
-                  className={`flex-1 text-center text-sm tracking-widest uppercase transition-all py-2 rounded-full ${
-                    allUnitsOn 
-                      ? 'text-slate-900 font-extrabold' 
-                      : 'text-slate-400 font-medium hover:text-slate-600'
+                  className={`flex-1 h-full rounded-full inline-flex items-center justify-center gap-1.5 text-[13px] font-black tracking-wide uppercase transition-all ${
+                    allUnitsOn
+                      ? 'bg-[#2563eb] text-white shadow-md shadow-blue-600/25'
+                      : 'text-slate-400 hover:text-slate-600'
                   }`}
                 >
+                  <Power className="w-4 h-4" strokeWidth={2.5} />
                   ON
                 </button>
-                <div className="w-px h-5 bg-slate-300 mx-2 shrink-0" />
                 <button
                   type="button"
                   onClick={() => handleBulkPowerToggle(false)}
-                  className={`flex-1 text-center text-sm tracking-widest uppercase transition-all py-2 rounded-full ${
-                    !allUnitsOn 
-                      ? 'text-slate-900 font-extrabold' 
-                      : 'text-slate-400 font-medium hover:text-slate-600'
+                  className={`flex-1 h-full rounded-full inline-flex items-center justify-center gap-1.5 text-[13px] font-black tracking-wide uppercase transition-all ${
+                    !allUnitsOn
+                      ? 'bg-[#2563eb] text-white shadow-md shadow-blue-600/25'
+                      : 'text-slate-400 hover:text-slate-600'
                   }`}
                 >
+                  <Power className="w-4 h-4" strokeWidth={2.5} />
                   OFF
                 </button>
               </div>
             </div>
+            </section>
 
             {/* EVENTS Horizontal Scroller Section */}
-            <div className="flex flex-col flex-none min-h-0 bg-slate-50/50 p-2.5 rounded-[2rem] border border-slate-100 shrink-0">
+            <div className="flex flex-col flex-none shrink-0 bg-white p-2.5 rounded-[2rem]  border border-slate-100">
               
               {/* Event Header */}
-              <div className="flex justify-between items-center px-2 mb-2 flex-none">
+              <div className="flex justify-between items-center px-2 mb-2 flex-none ">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">EVENTS</span>
                 <button
                   type="button"
@@ -2637,36 +2817,61 @@ export function Dashboard({
                   aggregatedEvents.map(evt => {
                     const startTimeStr = formatTimeAMPM(evt.time);
                     const endTimeStr = evt.endTime ? formatTimeAMPM(evt.endTime) : formatTimeAMPM(calculateDefaultEndTime(evt.time));
+                    const isOffEvent = evt.action === 'OFF';
+                    const actionLabel =
+                      evt.action === 'OFF' ? 'OFF' : evt.action === 'SET_TEMP' ? `${evt.temp}°C` : 'ON';
 
                     return (
                       <div 
                         key={evt.id}
-                        className="border border-slate-100 rounded-2xl p-3 flex flex-col justify-between w-[150px] shrink-0 h-[85px] bg-white shadow-sm snap-start relative"
+                        className={`rounded-2xl p-2.5 flex flex-col w-[168px] shrink-0 snap-start border ${
+                          isOffEvent
+                            ? 'bg-sky-50/70 border-sky-100 shadow-[0_2px_10px_rgba(56,189,248,0.08)]'
+                            : 'bg-emerald-50/70 border-emerald-100 shadow-[0_2px_10px_rgba(16,185,129,0.08)]'
+                        }`}
                       >
-                        <div>
-                          <div className="text-[10px] font-black text-slate-800 tracking-tight flex items-center justify-between">
-                            <span>{startTimeStr}</span>
-                            <span className="text-slate-300 font-medium">—</span>
-                            <span>{endTimeStr}</span>
+                        <div className="flex items-center">
+                          <div
+                            className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                              isOffEvent ? 'bg-sky-100/80' : 'bg-emerald-100/80'
+                            }`}
+                          >
+                            <Calendar
+                              className={`w-3.5 h-3.5 ${isOffEvent ? 'text-sky-700' : 'text-emerald-600'}`}
+                              strokeWidth={2.25}
+                            />
                           </div>
-                          <p className="text-[8px] font-black text-blue-600 uppercase tracking-wider mt-0.5">
-                            {evt.action === 'OFF' ? 'OFF' : evt.action === 'SET_TEMP' ? `${evt.temp}°C` : 'ON'}
-                          </p>
                         </div>
 
-                        <div className="flex items-center justify-between pt-1 border-t border-slate-50 mt-1">
-                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider truncate max-w-[70px]">
+                        <div className="mt-2 text-[11px] font-black text-slate-800 tracking-tight leading-tight">
+                          {startTimeStr} — {endTimeStr}
+                        </div>
+
+                        <div className="mt-1.5">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-white text-[8px] font-black uppercase tracking-wide ${
+                              isOffEvent ? 'bg-slate-400' : 'bg-emerald-500'
+                            }`}
+                          >
+                            {actionLabel}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-1 mt-2">
+                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider truncate min-w-0">
                             {formatDays(evt.days)}
                           </span>
                           <button
+                            type="button"
                             onClick={() => handleToggleSchedule(evt.id, evt.enabled)}
-                            className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-wider rounded transition-all border cursor-pointer ${
-                              evt.enabled 
-                                ? 'bg-emerald-500 text-white border-emerald-500' 
-                                : 'bg-slate-100 text-slate-400 border-slate-200'
+                            className={`shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wide cursor-pointer ${
+                              isOffEvent
+                                ? 'bg-sky-100 text-sky-700'
+                                : 'bg-emerald-100 text-emerald-700'
                             }`}
                           >
-                            {evt.enabled ? 'On' : 'Off'}
+                            <Clock className="w-2.5 h-2.5" strokeWidth={2.5} />
+                            {evt.enabled ? 'Enable' : 'Disable'}
                           </button>
                         </div>
                       </div>

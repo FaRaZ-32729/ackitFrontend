@@ -1,3 +1,3 @@
 export default function BrandMark({ alt = "", className }) {
-  return <img src="/logo.png" alt={alt || ""} className={className} />;
+  return <img src="/halfLogo.png" alt={alt || ""} className={className} />;
 }
