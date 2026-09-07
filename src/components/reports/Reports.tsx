@@ -350,7 +350,7 @@ export function Reports({
               ? `Download ${periodLabel} report for ${selectedVenueName}`
               : 'Load a venue with energy data first'
           }
-          className="w-auto shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm shadow-blue-600/15 active:scale-95"
+          className="w-[46%] sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-2.5 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm shadow-blue-600/15 active:scale-95"
         >
           <Download className="w-4 h-4" />
           Download CSV
@@ -360,7 +360,7 @@ export function Reports({
       <div className="flex-1 min-h-0 bg-white rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
         <div className="flex-1 min-h-0 flex flex-col p-4 md:p-6 gap-4 md:gap-5">
           <div className="shrink-0 grid grid-cols-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)_minmax(0,0.65fr)] gap-3 md:gap-4">
-            <div className="col-span-2 lg:col-span-1 rounded-2xl border border-slate-100 bg-slate-50/60 p-4 min-w-0">
+            <div className="col-span-2 lg:col-span-1 rounded-2xl border border-slate-100 bg-slate-50/60 p-3 min-w-0">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5 min-w-0">
                   <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
@@ -422,7 +422,7 @@ export function Reports({
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 flex flex-col justify-center min-w-0">
+            <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3 flex flex-col justify-center min-w-0">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                   <Zap className="w-4 h-4 fill-blue-600" />
@@ -439,7 +439,7 @@ export function Reports({
               </p>
             </div>
 
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 flex flex-col justify-center min-w-0">
+            <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3 flex flex-col justify-center min-w-0">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
                   <Activity className="w-4 h-4" />
