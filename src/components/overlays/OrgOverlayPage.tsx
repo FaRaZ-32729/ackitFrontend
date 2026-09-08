@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   ChevronDown, 
   ChevronUp, 
@@ -12,7 +12,13 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 
-export function OrgOverlayPage({ onClose }: { onClose: () => void }) {
+export function OrgOverlayPage({
+  onClose,
+  expandVenueId = null,
+}: {
+  onClose: () => void;
+  expandVenueId?: string | null;
+}) {
   const { 
     orgs, 
     venues, 
@@ -22,6 +28,7 @@ export function OrgOverlayPage({ onClose }: { onClose: () => void }) {
     setSelectedVenueId,
     selectedOrgId: globalOrgId,
     setSelectedOrgId: setGlobalOrgId,
+    selectedVenueId: globalVenueId,
     setActiveTab 
   } = useAppContext();
 
@@ -83,6 +90,27 @@ export function OrgOverlayPage({ onClose }: { onClose: () => void }) {
       return matchesSearch && matchesFilter;
     });
   }, [orgVenues, searchQuery, units, activeFilter]);
+
+  const didAutoExpand = useRef(false);
+  useEffect(() => {
+    if (didAutoExpand.current) return;
+    const targetId =
+      expandVenueId ||
+      globalVenueId ||
+      units.find((u) => u.id === selectedUnitId)?.venueId ||
+      orgVenues[0]?.id ||
+      null;
+    if (!targetId) return;
+    const match = orgVenues.find((v) => String(v.id) === String(targetId));
+    if (!match) return;
+    didAutoExpand.current = true;
+    setExpandedVenueIds({ [match.id]: true });
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-org-venue-id="${match.id}"]`)
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+  }, [expandVenueId, globalVenueId, selectedUnitId, units, orgVenues]);
 
   const toggleVenueExpand = (venueId: string) => {
     setExpandedVenueIds(prev => ({
@@ -287,7 +315,7 @@ export function OrgOverlayPage({ onClose }: { onClose: () => void }) {
                 const isExpanded = !!expandedVenueIds[venue.id];
                 
                 return (
-                  <div key={venue.id} className="flex flex-col">
+                  <div key={venue.id} className="flex flex-col" data-org-venue-id={venue.id}>
                     
                     {/* Venue Row */}
                     <div 

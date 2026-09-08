@@ -31,13 +31,16 @@ export function ConsoleLayout() {
     activeTab, 
     setActiveTab, 
     isSidebarOpen, 
-    setIsSidebarOpen, 
+    setIsSidebarOpen,
+    selectedVenueId,
   } = useAppContext();
   
   const navigate = useNavigate();
   const { tab } = useParams<{ tab: string }>();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isOrgPageOpen, setIsOrgPageOpen] = useState(false);
+  const [orgOverlayExpandVenueId, setOrgOverlayExpandVenueId] = useState<string | null>(null);
+  const [orgOverlaySession, setOrgOverlaySession] = useState(0);
   const [isAddOrgOpen, setIsAddOrgOpen] = useState(false);
   const [isAddVenueOpen, setIsAddVenueOpen] = useState(false);
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
@@ -56,6 +59,21 @@ export function ConsoleLayout() {
       setActiveTab(tab);
     }
   }, [tab, setActiveTab]);
+
+  useEffect(() => {
+    const openOrgOverlay = (event: Event) => {
+      const detail = (event as CustomEvent<{ expandVenueId?: string | null }>).detail;
+      setIsAddOrgOpen(false);
+      setIsAddVenueOpen(false);
+      setIsAddDeviceOpen(false);
+      setIsAddUserOpen(false);
+      setOrgOverlayExpandVenueId(detail?.expandVenueId || selectedVenueId || null);
+      setOrgOverlaySession((n) => n + 1);
+      setIsOrgPageOpen(true);
+    };
+    window.addEventListener('ackit:open-org-overlay', openOrgOverlay);
+    return () => window.removeEventListener('ackit:open-org-overlay', openOrgOverlay);
+  }, [selectedVenueId]);
 
   if (authLoading) {
     return null;
@@ -154,6 +172,8 @@ export function ConsoleLayout() {
                   } else if (activeTab === 'users') {
                     setIsAddUserOpen(!isAddUserOpen);
                   } else {
+                    setOrgOverlayExpandVenueId(selectedVenueId);
+                    setOrgOverlaySession((n) => n + 1);
                     setIsOrgPageOpen(!isOrgPageOpen);
                   }
                 }} 
@@ -203,7 +223,11 @@ export function ConsoleLayout() {
             ) : activeTab === 'users' && isAddUserOpen ? (
               <AddUserOverlayPage onClose={() => setIsAddUserOpen(false)} />
             ) : isOrgPageOpen ? (
-              <OrgOverlayPage onClose={() => setIsOrgPageOpen(false)} />
+              <OrgOverlayPage
+                key={orgOverlaySession}
+                expandVenueId={orgOverlayExpandVenueId}
+                onClose={() => setIsOrgPageOpen(false)}
+              />
             ) : (
               <Outlet />
             )}

@@ -2565,19 +2565,35 @@ export function Dashboard({
 
               {/* Card 2: Devices & Faults — phone icon */}
               <div className="relative rounded-2xl p-2 flex flex-col justify-between bg-white border border-slate-100 shadow-sm">
-                <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const expandVenueId =
+                      globalVenueId ||
+                      liveUnits.find((u) => u.id === globalUnitId)?.venueId ||
+                      null;
+                    window.dispatchEvent(
+                      new CustomEvent('ackit:open-org-overlay', {
+                        detail: { expandVenueId },
+                      })
+                    );
+                  }}
+                  aria-label="Open organization and device list"
+                  className="min-w-0 text-left rounded-xl -mx-0.5 px-0.5 py-0.5 active:bg-slate-50 transition-colors"
+                >
                   <div className="flex items-center gap-1">
-                    <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                    {/* <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0"> */}
                       <Smartphone className="w-3 h-3 text-teal-700" />
-                    </div>
+                    {/* </div> */}
                     <span className="text-sm font-black text-emerald-600 leading-none">
                        {totalUnitsCount}
                     </span>
+                    <ChevronRight className="w-3 h-3 text-slate-300 ml-auto shrink-0" strokeWidth={2.5} />
                   </div>
                   <span className="text-[7px] font-bold text-slate-500 uppercase tracking-wide block mt-0.5 leading-tight">
                     No. of devices
                   </span>
-                </div>
+                </button>
                 <div className="h-px bg-slate-100 my-1 shrink-0" />
                 <button
                   type="button"
