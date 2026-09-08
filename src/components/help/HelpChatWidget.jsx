@@ -18,7 +18,7 @@ import "./HelpChatWidget.css";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5057";
 const FAB_SIZE = 60;
-const FAB_POS_KEY = "ackit-help-fab-pos";
+const FAB_POS_KEY = "ackit-help-fab-pos-v3";
 const DRAG_THRESHOLD = 6;
 const VOICE_BAR_COUNT = 24;
 
@@ -53,13 +53,10 @@ const WELCOME =
   "Hi! I'm Kit — your AC-Kit assistant. Ask about your devices, venues, team members, or how features work.";
 
 function defaultFabPos() {
-  const margin = 20;
-  const mobileExtra =
-    typeof window !== "undefined" && window.innerWidth <= 640 ? 56 : 0;
-  return {
-    x: window.innerWidth - FAB_SIZE - margin,
-    y: window.innerHeight - FAB_SIZE - margin - mobileExtra,
-  };
+  const desktop = typeof window !== "undefined" && window.innerWidth >= 1280;
+  return desktop
+    ? { x: 16.727452850341797, y: 10.352943420410156 }
+    : { x: 7, y: 7 };
 }
 
 function clampFabPos(x, y) {
@@ -91,7 +88,7 @@ let helpWidgetMounted = false;
 
 /**
  * Fiverr-style floating help chat.
- * FAB is draggable; panel always opens fixed bottom-right (approach A).
+ * FAB is draggable; panel always opens fixed bottom-right.
  */
 export default function HelpChatWidget() {
   const [isPrimary] = useState(() => {

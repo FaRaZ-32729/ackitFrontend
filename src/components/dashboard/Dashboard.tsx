@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ACUnit, Role, Organization, Venue, ACEvent } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { getDevicesByVenue, setDevicePower, setDeviceTemperature, setDeviceMode, setDeviceFan } from '../../api/deviceApi';
@@ -84,6 +85,114 @@ function buildEnergyWave(powerKw: number, deviceCount: number): { line: string; 
   return { line, area };
 }
 
+function NeedMaintenanceList({
+  venues,
+  units,
+  expandedVenueId,
+  onToggleVenue,
+  onViewUnit,
+}: {
+  venues: Venue[];
+  units: ACUnit[];
+  expandedVenueId: string | null;
+  onToggleVenue: (venueId: string) => void;
+  onViewUnit: (unitId: string) => void;
+}) {
+  if (venues.length === 0) {
+    return (
+      <p className="text-[11px] text-slate-400 py-6 text-center italic font-bold">
+        No venues in this organization.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {venues.map((v) => {
+        const venueUnits = units.filter((u) => u.venueId === v.id);
+        const faultyUnits = venueUnits.filter((u) => u.hasFault);
+        const faultCount = faultyUnits.length;
+        const isExpanded = expandedVenueId === v.id;
+
+        return (
+          <div
+            key={v.id}
+            className={`border rounded-2xl overflow-hidden transition-all duration-200 ${
+              faultCount > 0
+                ? 'border-red-100 bg-red-50/10'
+                : 'border-slate-100 bg-slate-50/20'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => onToggleVenue(v.id)}
+              className="w-full flex justify-between items-center p-3.5 cursor-pointer hover:bg-slate-50 transition-colors text-left"
+            >
+              <span className="text-xs font-extrabold text-slate-800 truncate pr-2">{v.name}</span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+                    faultCount > 0 ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  ! {String(faultCount).padStart(2, '0')}
+                </span>
+                <span className="text-slate-400">
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                  />
+                </span>
+              </div>
+            </button>
+
+            <AnimatePresence initial={false}>
+              {isExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="bg-white border-t border-slate-100 px-4 py-2.5 divide-y divide-slate-50 overflow-hidden"
+                >
+                  {faultCount > 0 ? (
+                    faultyUnits.map((unit) => {
+                      const reason =
+                        unit.healthAlert ||
+                        (typeof unit.ventTemperature === 'number'
+                          ? `Vent ${unit.ventTemperature.toFixed(1)}°C above set ${unit.targetTemp}°C`
+                          : 'Vent temperature above set point');
+                      return (
+                        <div key={unit.id} className="py-2 flex justify-between items-center gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs font-black text-slate-800 truncate">{unit.name}</p>
+                            <p className="text-[9px] font-medium mt-0.5 text-amber-600 leading-snug">{reason}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => onViewUnit(unit.id)}
+                            className="p-1.5 bg-red-50 hover:bg-red-100 rounded-lg text-red-600 transition-all text-[10px] font-black uppercase shrink-0"
+                            title="Go to device"
+                          >
+                            View
+                          </button>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-[11px] text-slate-400 py-2 italic font-bold">
+                      All hardware healthy in this venue.
+                    </p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function isDeviceOnline(unit: ACUnit): boolean {
   // Missing status = treat as online (legacy/static units); real API devices set status
   return unit.status !== 'offline';
@@ -148,6 +257,7 @@ export function Dashboard({
   onViewDevicesOfVenue
 }: DashboardProps) {
   const isManager = role === 'manager';
+  const navigate = useNavigate();
 
   const { 
     selectedVenueId: globalVenueId, 
@@ -174,6 +284,11 @@ export function Dashboard({
 
   // 3. Maintenance List Expansion State
   const [expandedMaintenanceVenueId, setExpandedMaintenanceVenueId] = useState<string | null>(null);
+  const [showMaintenanceDrawer, setShowMaintenanceDrawer] = useState(false);
+  const [maintenanceDragY, setMaintenanceDragY] = useState(0);
+  const [isMaintenanceDragging, setIsMaintenanceDragging] = useState(false);
+  const maintenanceDraggingRef = useRef(false);
+  const maintenanceDragStartY = useRef(0);
 
   // 4. State for Schedule Creator Form (matches Device Management Add Event fields)
   const [showScheduleForm, setShowScheduleForm] = useState(false);
@@ -438,6 +553,54 @@ export function Dashboard({
   const framePowerKw = useMemo(
     () => sumLivePowerKw(frameMetricUnits),
     [frameMetricUnits, sumLivePowerKw]
+  );
+
+  const closeMaintenanceDrawer = useCallback(() => {
+    maintenanceDraggingRef.current = false;
+    setIsMaintenanceDragging(false);
+    setMaintenanceDragY(0);
+    setShowMaintenanceDrawer(false);
+  }, []);
+
+  const openMaintenanceDrawer = useCallback(() => {
+    const firstFaulty = orgVenues.find((v) =>
+      liveUnits.some((u) => u.venueId === v.id && u.hasFault)
+    );
+    setExpandedMaintenanceVenueId(firstFaulty?.id ?? orgVenues[0]?.id ?? null);
+    setMaintenanceDragY(0);
+    setShowMaintenanceDrawer(true);
+  }, [orgVenues, liveUnits]);
+
+  const onMaintenanceHandlePointerDown = useCallback((e: React.PointerEvent) => {
+    maintenanceDraggingRef.current = true;
+    maintenanceDragStartY.current = e.clientY;
+    setIsMaintenanceDragging(true);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
+
+  const onMaintenanceHandlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!maintenanceDraggingRef.current) return;
+    setMaintenanceDragY(Math.max(0, e.clientY - maintenanceDragStartY.current));
+  }, []);
+
+  const onMaintenanceHandlePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      if (!maintenanceDraggingRef.current) return;
+      maintenanceDraggingRef.current = false;
+      setIsMaintenanceDragging(false);
+      const dy = Math.max(0, e.clientY - maintenanceDragStartY.current);
+      if (dy > 96) {
+        closeMaintenanceDrawer();
+      } else {
+        setMaintenanceDragY(0);
+      }
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        /* already released */
+      }
+    },
+    [closeMaintenanceDrawer]
   );
 
   const orgTempScopeKey = `org:${globalOrgId || 'none'}`;
@@ -1771,81 +1934,15 @@ export function Dashboard({
               </div>
 
               {/* Accordion / List of alerts */}
-              <div className="space-y-2">
-                {orgVenues.map(v => {
-                  const venueUnits = liveUnits.filter(u => u.venueId === v.id);
-                  const faultyUnits = venueUnits.filter(u => u.hasFault);
-                  const faultCount = faultyUnits.length;
-                  const isExpanded = expandedMaintenanceVenueId === v.id;
-
-                  return (
-                    <div 
-                      key={v.id} 
-                      className={`border rounded-2xl overflow-hidden transition-all duration-200 ${
-                        faultCount > 0 
-                          ? 'border-red-100 bg-red-50/10' 
-                          : 'border-slate-100 bg-slate-50/20'
-                      }`}
-                    >
-                      <div 
-                        onClick={() => setExpandedMaintenanceVenueId(isExpanded ? null : v.id)}
-                        className="flex justify-between items-center p-3.5 cursor-pointer hover:bg-slate-50 transition-colors"
-                      >
-                        <span className="text-xs font-extrabold text-slate-800">{v.name}</span>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${
-                            faultCount > 0 ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-slate-100 text-slate-500'
-                          }`}>
-                            ! {String(faultCount).padStart(2, '0')}
-                          </span>
-                          <span className="text-slate-400">
-                            {isExpanded ? <ChevronDown className="w-4 h-4 transform rotate-180" /> : <ChevronDown className="w-4 h-4" />}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Expandable sub-list of actual faulty devices */}
-                      <AnimatePresence initial={false}>
-                        {isExpanded && (
-                          <motion.div 
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="bg-white border-t border-slate-100 px-4 py-2.5 divide-y divide-slate-50"
-                          >
-                            {faultCount > 0 ? (
-                              faultyUnits.map(unit => {
-                                const reason =
-                                  unit.healthAlert ||
-                                  (typeof unit.ventTemperature === 'number'
-                                    ? `Vent ${unit.ventTemperature.toFixed(1)}°C above set ${unit.targetTemp}°C`
-                                    : 'Vent temperature above set point');
-                                return (
-                                <div key={unit.id} className="py-2 flex justify-between items-center gap-2">
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-black text-slate-800 truncate">{unit.name}</p>
-                                    <p className="text-[9px] font-medium mt-0.5 text-amber-600 leading-snug">{reason}</p>
-                                  </div>
-                                  <button 
-                                    onClick={() => onSelectUnit(unit.id)}
-                                    className="p-1.5 bg-red-50 hover:bg-red-100 rounded-lg text-red-600 transition-all text-[10px] font-black uppercase shrink-0"
-                                    title="Go to device"
-                                  >
-                                    View
-                                  </button>
-                                </div>
-                              );})
-                            ) : (
-                              <p className="text-[11px] text-slate-400 py-2 italic font-bold">All hardware healthy in this venue.</p>
-                            )}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  );
-                })}
-              </div>
+              <NeedMaintenanceList
+                venues={orgVenues}
+                units={liveUnits}
+                expandedVenueId={expandedMaintenanceVenueId}
+                onToggleVenue={(id) =>
+                  setExpandedMaintenanceVenueId(expandedMaintenanceVenueId === id ? null : id)
+                }
+                onViewUnit={onSelectUnit}
+              />
             </div>
 
             <div className="text-[10px] text-slate-400 font-extrabold mt-4 pt-3 border-t border-slate-100 text-center uppercase tracking-widest">
@@ -2007,13 +2104,18 @@ export function Dashboard({
               </div>
 
               {/* Energy Card */}
-              <div className="flex flex-col items-center justify-center p-2.5 bg-amber-50/45 border border-amber-100/50 rounded-2xl hover:bg-amber-50 hover:shadow-sm transition-all group">
+              <button
+                type="button"
+                onClick={() => navigate(`/${role}/reports`)}
+                aria-label="Open energy reports"
+                className="flex flex-col items-center justify-center p-2.5 bg-amber-50/45 border border-amber-100/50 rounded-2xl hover:bg-amber-50 hover:shadow-sm transition-all group cursor-pointer"
+              >
                 <div className="p-1.5 bg-amber-100/60 text-amber-600 rounded-xl mb-1 group-hover:scale-110 transition-transform">
                   <Zap className="w-4 h-4" />
                 </div>
                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block text-center">Energy</span>
                 <span className="text-xs font-black text-amber-700 mt-0.5">{framePowerKw.toFixed(2)} kW</span>
-              </div>
+              </button>
 
               {/* Faults Card */}
               <div className="flex flex-col items-center justify-center p-2.5 bg-rose-50/45 border border-rose-100/50 rounded-2xl hover:bg-rose-50 hover:shadow-sm transition-all group">
@@ -2406,8 +2508,13 @@ export function Dashboard({
             {/* Metrics Row — Energy / Devices / Lock (mobile reference UI) */}
             <div className="grid grid-cols-3 gap-2 flex-none shrink-0 items-stretch">
               
-              {/* Card 1: Energy — reference layout (icon, ENERGY, kW, filled wave) */}
-              <div className="relative overflow-hidden rounded-2xl p-2 flex flex-col min-h-0 bg-[linear-gradient(135deg,#2ec4a0_0%,#149a78_48%,#0b6b52_100%)] shadow-md shadow-emerald-700/20">
+              {/* Card 1: Energy — tap opens Reports */}
+              <button
+                type="button"
+                onClick={() => navigate(`/${role}/reports`)}
+                aria-label="Open energy reports"
+                className="relative overflow-hidden rounded-2xl p-2 flex flex-col min-h-0 w-full text-left cursor-pointer border-0 bg-[linear-gradient(135deg,#2ec4a0_0%,#149a78_48%,#0b6b52_100%)] shadow-md shadow-emerald-700/20 active:scale-[0.98] transition-transform"
+              >
                 <div className="relative z-[1] flex items-start justify-between">
                   <div className="w-6 h-6 rounded-full bg-[#7ee0c4]/55 flex items-center justify-center">
                     <Zap className="w-3 h-3 text-white fill-white" />
@@ -2454,39 +2561,45 @@ export function Dashboard({
                     />
                   </g>
                 </svg>
-              </div>
+              </button>
 
               {/* Card 2: Devices & Faults — phone icon */}
               <div className="relative rounded-2xl p-2 flex flex-col justify-between bg-white border border-slate-100 shadow-sm">
-                <div className="flex items-start justify-between">
-                  <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center">
-                    <Smartphone className="w-3 h-3 text-teal-700" />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1">
+                    <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                      <Smartphone className="w-3 h-3 text-teal-700" />
+                    </div>
+                    <span className="text-sm font-black text-emerald-600 leading-none">
+                       {totalUnitsCount}
+                    </span>
                   </div>
-                </div>
-                <div className="min-w-0 mt-0.5">
-                  <span className="text-sm font-black text-emerald-600 leading-none">
-                    # {totalUnitsCount}
-                  </span>
                   <span className="text-[7px] font-bold text-slate-500 uppercase tracking-wide block mt-0.5 leading-tight">
                     No. of devices
                   </span>
                 </div>
                 <div className="h-px bg-slate-100 my-1 shrink-0" />
-                <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={openMaintenanceDrawer}
+                  aria-label="Open need maintenance list"
+                  className="min-w-0 text-left rounded-xl -mx-0.5 px-0.5 py-0.5 active:bg-red-50/70 transition-colors"
+                >
                   <div className="flex items-center gap-1">
                     <AlertCircle className="w-3 h-3 text-red-500 shrink-0" />
                     <span className="text-sm font-black text-red-600 leading-none">
                       {faultUnitsCount}
                     </span>
+                    <ChevronRight className="w-3 h-3 text-slate-300 ml-auto shrink-0" strokeWidth={2.5} />
                   </div>
                   <span className="text-[7px] font-bold text-slate-500 uppercase tracking-wide block mt-0.5 leading-tight">
                     Fault devices
                   </span>
-                </div>
+                </button>
               </div>
 
               {/* Card 3: Lock State — exact reference layout */}
-              <div className="relative overflow-hidden rounded-2xl px-2 pt-2 pb-1.5 flex flex-col justify-around items-center bg-[#2563eb] shadow-md shadow-blue-600/25">
+              <div className="relative overflow-hidden rounded-2xl px-2 pt-2 pb-1.5 flex flex-col gap-2 bg-[#2563eb] shadow-md shadow-blue-600/25">
                 {/* Header: lock + LOCK STATE + chevron */}
                 <div className="flex items-center gap-1 min-w-0">
                   <Lock className="w-3 h-3 text-white shrink-0" strokeWidth={2.25} />
@@ -2890,6 +3003,100 @@ export function Dashboard({
           </div>
         );
       })()}
+
+      {/* Mobile Need Maintenance — draggable bottom drawer from Fault devices */}
+      <AnimatePresence>
+        {showMaintenanceDrawer && (
+          <motion.div
+            key="maintenance-drawer"
+            className="xl:hidden fixed inset-0 z-[90]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mobile-need-maintenance-title"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+          >
+            <button
+              type="button"
+              aria-label="Close maintenance drawer"
+              className="absolute inset-0 bg-slate-900/45 border-0 cursor-pointer"
+              onClick={closeMaintenanceDrawer}
+            />
+            <motion.div
+              className="absolute left-0 right-0 bottom-0 flex flex-col max-h-[86vh] bg-white rounded-t-[1.75rem] shadow-[0_-12px_40px_rgba(15,23,42,0.18)] border border-slate-100 overflow-hidden"
+              initial={{ y: '100%' }}
+              animate={{ y: maintenanceDragY }}
+              exit={{ y: '100%' }}
+              transition={
+                isMaintenanceDragging
+                  ? { duration: 0 }
+                  : { type: 'spring', damping: 32, stiffness: 380, mass: 0.85 }
+              }
+            >
+              <div
+                className={`shrink-0 touch-none select-none pt-2 pb-1 px-4 ${
+                  isMaintenanceDragging ? 'cursor-grabbing' : 'cursor-grab'
+                }`}
+                onPointerDown={onMaintenanceHandlePointerDown}
+                onPointerMove={onMaintenanceHandlePointerMove}
+                onPointerUp={onMaintenanceHandlePointerUp}
+                onPointerCancel={onMaintenanceHandlePointerUp}
+              >
+                <div className="flex justify-center pb-2">
+                  <div className="w-11 h-1.5 rounded-full bg-slate-300" />
+                </div>
+                <div className="flex items-start gap-2.5 pb-3">
+                  <div className="p-2 bg-red-50 text-red-600 rounded-xl shrink-0">
+                    <AlertCircle className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3
+                      id="mobile-need-maintenance-title"
+                      className="text-base font-black text-slate-900 tracking-tight"
+                    >
+                      Need Maintenance
+                    </h3>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+                      Vent temp & device health alerts · {faultUnitsCount} fault
+                      {faultUnitsCount === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeMaintenanceDrawer}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-xl shrink-0 active:scale-95"
+                    aria-label="Close"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-2">
+                <NeedMaintenanceList
+                  venues={orgVenues}
+                  units={liveUnits}
+                  expandedVenueId={expandedMaintenanceVenueId}
+                  onToggleVenue={(id) =>
+                    setExpandedMaintenanceVenueId(expandedMaintenanceVenueId === id ? null : id)
+                  }
+                  onViewUnit={(id) => {
+                    closeMaintenanceDrawer();
+                    onSelectUnit(id);
+                  }}
+                />
+              </div>
+
+              <div className="text-[10px] text-slate-400 font-extrabold py-3 px-4 border-t border-slate-100 text-center uppercase tracking-widest pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                Live Hardware Heartbeat Status
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Schedule modal — same fields as Device Management Add Event */}
       <Modal
